@@ -10,4 +10,4 @@ websockets
 dbus-next
 mss
 PyGObject
-pyobjc
+pyobjc; sys_platform == "darwin"
