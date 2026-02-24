@@ -1,0 +1,13 @@
+PyQt6
+requests
+websocket-client
+Pillow
+screeninfo
+pynput
+numpy
+opencv-python
+websockets
+dbus-next
+mss
+PyGObject
+pyobjc

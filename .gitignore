@@ -1,0 +1,7 @@
+screenshots/*
+.claude/*
+.DS_Store
+screenshots/.DS_Store
+.DS_Store
+venv/*
+__pycache__/*
