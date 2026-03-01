@@ -6,7 +6,6 @@ screeninfo
 pynput
 numpy
 opencv-python
-websockets
 dbus-next
 mss
 pyobjc; sys_platform == "darwin"
