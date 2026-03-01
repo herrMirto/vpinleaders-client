@@ -9,5 +9,4 @@ opencv-python
 websockets
 dbus-next
 mss
-PyGObject
 pyobjc; sys_platform == "darwin"
