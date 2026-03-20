@@ -1,0 +1,125 @@
+{
+  "_notes": [
+    "Native NVRAM mapping for Spider-Man (Stern SAM)."
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "platform": "stern-sam",
+    "roms": [
+      "sman_260",
+      "sman_261",
+      "sman_262"
+    ]
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a24"
+      },
+      {
+        "label": "Player 2",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a28"
+      },
+      {
+        "label": "Player 3",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a2c"
+      },
+      {
+        "label": "Player 4",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a30"
+      }
+    ],
+    "match_counter": {
+      "label": "Match Counter",
+      "encoding": "int",
+      "start": "0x2110A1C"
+    }
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102b54"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b6c"
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102b78"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b90"
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102b9c"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102bb4"
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102bc0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102bd8"
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102be4"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102bfc"
+      }
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "_notes": [
+    "Native NVRAM mapping for Indiana Jones (Stern SAM)."
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "platform": "stern-sam",
+    "roms": [
+      "ij4_210",
+      "ij4_210f"
+    ]
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109e4"
+      },
+      {
+        "label": "Player 2",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109e8"
+      },
+      {
+        "label": "Player 3",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109ec"
+      },
+      {
+        "label": "Player 4",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109f0"
+      }
+    ],
+    "match_counter": {
+      "label": "Match Counter",
+      "encoding": "int",
+      "start": "0x21109DC"
+    }
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102d40"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102d58"
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102d60"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102d78"
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102d80"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102d98"
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102da0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102db8"
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102dc0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102dd8"
+      }
+    }
+  ]
+}

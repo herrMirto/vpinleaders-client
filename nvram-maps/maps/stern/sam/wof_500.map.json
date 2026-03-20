@@ -1,0 +1,136 @@
+{
+  "_notes": [
+    "Derived from native NVRAM offsets.",
+    "This map focuses on current/last game score extraction.",
+    "Verify score encoding/scale with real NVRAM before production use."
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "platform": "stern-sam",
+    "roms": [
+      "wof_500",
+      "wof_500f",
+      "wof_500g",
+      "wof_500i",
+      "wof_500l",
+      "wpt_140a",
+      "wpt_140af",
+      "wpt_140ai",
+      "wpt_140al",
+      "wpt_140f",
+      "wpt_140g",
+      "wpt_140gf"
+    ],
+    "source_handler": "wof_500"
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a2c",
+        "endian": "little"
+      },
+      {
+        "label": "Player 2",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a30",
+        "endian": "little"
+      },
+      {
+        "label": "Player 3",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a34",
+        "endian": "little"
+      },
+      {
+        "label": "Player 4",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a38",
+        "endian": "little"
+      }
+    ],
+    "match_counter": {
+      "label": "Match Counter",
+      "encoding": "int",
+      "start": "0x2110A24"
+    }
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102db0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102dc8"
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102dd0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102de8"
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102df0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102e08"
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102e10"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102e28"
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102e30"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102e48"
+      }
+    }
+  ]
+}

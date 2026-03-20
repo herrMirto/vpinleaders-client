@@ -1,0 +1,16 @@
+{
+  "_notes": [
+    "Capcom Pinball platform (late 1990s).",
+    "NVRAM sizes seen in VPX dumps vary by table/build (64KB or 128KB variants)."
+  ],
+  "cpu": "68000",
+  "endian": "big",
+  "memory_layout": [
+    {
+      "label": "NVRAM",
+      "address": "0x0000",
+      "size": "0x20000",
+      "type": "nvram"
+    }
+  ]
+}

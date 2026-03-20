@@ -1,0 +1,145 @@
+{
+  "_notes": [
+    "Based on gldneye.map.json",
+    "Apollo 13 (Sega 1995)",
+    "High scores validated from apollo13.nv",
+    "game_state mapped from apollo13_attract/inplay/gameover snapshots",
+    "TODO: validate game_state with additional sessions and map mode_champions"
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "copyright": [
+      "None",
+      "Copyright (C) 2025 by Tom Collins <tom@scorbit.io>"
+    ],
+    "license": "GNU Lesser General Public License v3.0",
+    "platform": "whitestar",
+    "roms": [
+      "apollo13"
+    ]
+  },
+  "limits": {
+    "high_score_min": "24000000"
+  },
+  "high_scores": [
+    {
+      "label": "First Place",
+      "short_label": "1st",
+      "initials": {
+        "start": 5306,
+        "encoding": "ch",
+        "length": 3
+      },
+      "score": {
+        "start": 5244,
+        "encoding": "bcd",
+        "length": 5
+      }
+    },
+    {
+      "label": "Second Place",
+      "short_label": "2nd",
+      "initials": {
+        "start": 5309,
+        "encoding": "ch",
+        "length": 3
+      },
+      "score": {
+        "start": 5249,
+        "encoding": "bcd",
+        "length": 5
+      }
+    },
+    {
+      "label": "Third Place",
+      "short_label": "3rd",
+      "initials": {
+        "start": 5312,
+        "encoding": "ch",
+        "length": 3
+      },
+      "score": {
+        "start": 5254,
+        "encoding": "bcd",
+        "length": 5
+      }
+    },
+    {
+      "label": "Fourth Place",
+      "short_label": "4th",
+      "initials": {
+        "start": 5315,
+        "encoding": "ch",
+        "length": 3
+      },
+      "score": {
+        "start": 5259,
+        "encoding": "bcd",
+        "length": 5
+      }
+    },
+    {
+      "label": "Fifth Place",
+      "short_label": "5th",
+      "initials": {
+        "start": 5318,
+        "encoding": "ch",
+        "length": 3
+      },
+      "score": {
+        "start": 5264,
+        "encoding": "bcd",
+        "length": 5
+      }
+    },
+    {
+      "label": "Sixth Place",
+      "short_label": "6th",
+      "initials": {
+        "start": 5321,
+        "encoding": "ch",
+        "length": 3
+      },
+      "score": {
+        "start": 5269,
+        "encoding": "bcd",
+        "length": 5
+      }
+    }
+  ],
+  "game_state": {
+    "_notes": [
+      "Single-player live score currently mapped to one slot only.",
+      "current_ball at 5374 appears offset by +2 in captured snapshots.",
+      "game_over uses a latched non-zero flag at 5370."
+    ],
+    "scores": [
+      {
+        "label": "Player 1",
+        "start": 5360,
+        "encoding": "bcd",
+        "length": 5
+      }
+    ],
+    "final_scores": [
+      {
+        "label": "Final P1",
+        "start": 5330,
+        "encoding": "bcd",
+        "length": 5
+      }
+    ],
+    "current_ball": {
+      "label": "Current Ball",
+      "start": 5374,
+      "encoding": "int",
+      "offset": -2
+    },
+    "game_over": {
+      "label": "Game Over",
+      "start": 5370,
+      "encoding": "bool"
+    }
+  }
+}

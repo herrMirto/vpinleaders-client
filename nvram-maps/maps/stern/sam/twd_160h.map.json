@@ -1,0 +1,203 @@
+{
+  "_notes": [
+    "Compiled by hex analysis of twd_160h.nv",
+    "Score area differs from tf_180/avs layout and is shifted to 0x2110A9C",
+    "Verified with 1-player game: P1=3,056,260 at 0x2110A9C",
+    "0x2110A94 appears to increment per finished game and is used as optional fallback match_counter"
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "copyright": [],
+    "license": "GNU Lesser General Public License v3.0",
+    "platform": "stern-sam",
+    "roms": [
+      "twd_160h"
+    ]
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110A9C"
+      },
+      {
+        "label": "Player 2",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110AA0"
+      },
+      {
+        "label": "Player 3",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110AA4"
+      },
+      {
+        "label": "Player 4",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110AA8"
+      }
+    ],
+    "match_counter": {
+      "label": "Match Counter",
+      "encoding": "int",
+      "start": "0x2110A94"
+    }
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2103714",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x210372c"
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2103738",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2103750"
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x210375c",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2103774"
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2103780",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2103798"
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x21037a4",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21037bc"
+      }
+    },
+    {
+      "label": "High Score #5",
+      "short_label": "#5",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x21037ec",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2103804"
+      }
+    },
+    {
+      "label": "High Score #6",
+      "short_label": "#6",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2103810",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2103828"
+      }
+    },
+    {
+      "label": "High Score #7",
+      "short_label": "#7",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2103834",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x210384c"
+      }
+    },
+    {
+      "label": "High Score #8",
+      "short_label": "#8",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2103858",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2103870"
+      }
+    },
+    {
+      "label": "High Score #9",
+      "short_label": "#9",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x210387c",
+        "null": "terminate"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2103894"
+      }
+    }
+  ]
+}

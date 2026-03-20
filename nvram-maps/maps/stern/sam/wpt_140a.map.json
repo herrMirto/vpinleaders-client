@@ -1,0 +1,123 @@
+{
+  "_notes": [
+    "Native NVRAM mapping for wpt_140a (Stern SAM).",
+    "Split from wof_500 shared ROM metadata so this ROM has an explicit map entry."
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "platform": "stern-sam",
+    "roms": [
+      "wpt_140a"
+    ]
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a2c",
+        "endian": "little"
+      },
+      {
+        "label": "Player 2",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a30",
+        "endian": "little"
+      },
+      {
+        "label": "Player 3",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a34",
+        "endian": "little"
+      },
+      {
+        "label": "Player 4",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110a38",
+        "endian": "little"
+      }
+    ],
+    "match_counter": {
+      "label": "Match Counter",
+      "encoding": "int",
+      "start": "0x2110A24"
+    }
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102db0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102dc8"
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102dd0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102de8"
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102df0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102e08"
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102e10"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102e28"
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102e30"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102e48"
+      }
+    }
+  ]
+}

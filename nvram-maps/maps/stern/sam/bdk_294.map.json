@@ -1,0 +1,168 @@
+{
+  "_notes": [
+    "Compiled by hex analysis of bdk_294.nv",
+    "WARNING: Score location is UNCERTAIN - needs verification with a multi-player game",
+    "P1 score 3,346,800 found at TWO locations: 0x21109E0 AND 0x21109F0",
+    "Using 0x21109F0 as P1 because P2/P3/P4 slots at 0x21109F4-0x21109FC are all 0 (clean for 1-player game)",
+    "At 0x21109E0 the neighboring P3/P4 slots contain non-zero invalid values (1 and -182)",
+    "0x21109E0 may be a 'current player running score' mirror field specific to older SAM firmware (2008)",
+    "0x21109DC appears to be a possible match/credit counter and is used as an optional fallback signal"
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "copyright": [],
+    "license": "GNU Lesser General Public License v3.0",
+    "platform": "stern-sam",
+    "roms": [
+      "bdk_294"
+    ]
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109F0"
+      },
+      {
+        "label": "Player 2",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109F4"
+      },
+      {
+        "label": "Player 3",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109F8"
+      },
+      {
+        "label": "Player 4",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109FC"
+      }
+    ],
+    "match_counter": {
+      "label": "Match Counter",
+      "encoding": "int",
+      "start": "0x21109DC"
+    }
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b00"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b18"
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b20"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b38"
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b40"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b58"
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b60"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b78"
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b80"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b98"
+      }
+    },
+    {
+      "label": "High Score #5",
+      "short_label": "#5",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102ba0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102bb8"
+      }
+    },
+    {
+      "label": "High Score #6",
+      "short_label": "#6",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102bc0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102bd8"
+      }
+    },
+    {
+      "label": "High Score #7",
+      "short_label": "#7",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102be0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102bf8"
+      }
+    }
+  ]
+}

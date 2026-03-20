@@ -1,0 +1,121 @@
+{
+  "_notes": [
+    "Dedicated MTL map based on observed NVRAM offsets (little-endian int scores).",
+    "Player score block starts at 0x2110A24; match counter at 0x2110A1C."
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "copyright": [],
+    "license": "GNU Lesser General Public License v3.0",
+    "platform": "stern-sam",
+    "roms": [
+      "mtl_180h"
+    ]
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110A24"
+      },
+      {
+        "label": "Player 2",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110A28"
+      },
+      {
+        "label": "Player 3",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110A2C"
+      },
+      {
+        "label": "Player 4",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110A30"
+      }
+    ],
+    "match_counter": {
+      "label": "Match Counter",
+      "encoding": "int",
+      "start": "0x2110A1C"
+    }
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "length": 3,
+        "start": "0x2103724"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x210373C"
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "length": 3,
+        "start": "0x2103748"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2103760"
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "length": 3,
+        "start": "0x210376C"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2103784"
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "length": 3,
+        "start": "0x2103790"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21037A8"
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "length": 3,
+        "start": "0x21037B4"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21037CC"
+      }
+    }
+  ]
+}

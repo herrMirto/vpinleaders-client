@@ -1,0 +1,82 @@
+#!/bin/bash
+
+APP_ROOT="/userdata/system/vpinleaders-client/current"
+APP_BIN="${APP_ROOT}/vpinleaders-client"
+CONFIG_PATH="/userdata/system/configs/vpinleaders-client/config.ini"
+LOG_PATH="/userdata/system/logs/vpinleaders-client.log"
+PID_FILE="/var/run/vpinleaders-client.pid"
+APP_ARGS=(--headless --config "${CONFIG_PATH}")
+
+start_service() {
+  mkdir -p "/userdata/system/configs/vpinleaders-client" "/userdata/system/logs"
+
+  if [[ ! -x "${APP_BIN}" ]]; then
+    echo "VPinLeaders binary not found: ${APP_BIN}"
+    return 1
+  fi
+
+  if [[ ! -f "${CONFIG_PATH}" ]]; then
+    echo "VPinLeaders config not found: ${CONFIG_PATH}"
+    echo "Run registration first:"
+    echo "${APP_BIN} --register --machine-id YOUR_MACHINE_ID"
+    return 1
+  fi
+
+  if [[ -f "${PID_FILE}" ]]; then
+    local pid
+    pid="$(cat "${PID_FILE}")"
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+      echo "VPinLeaders already running"
+      return 0
+    fi
+    rm -f "${PID_FILE}"
+  fi
+
+  cd "${APP_ROOT}" || return 1
+  nohup "${APP_BIN}" "${APP_ARGS[@]}" >> "${LOG_PATH}" 2>&1 &
+  echo $! > "${PID_FILE}"
+  echo "VPinLeaders started"
+}
+
+stop_service() {
+  if [[ ! -f "${PID_FILE}" ]]; then
+    echo "VPinLeaders is not running"
+    return 0
+  fi
+
+  local pid
+  pid="$(cat "${PID_FILE}")"
+  if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+    kill "${pid}" 2>/dev/null || true
+    sleep 1
+    if kill -0 "${pid}" 2>/dev/null; then
+      kill -9 "${pid}" 2>/dev/null || true
+    fi
+  fi
+  rm -f "${PID_FILE}"
+  echo "VPinLeaders stopped"
+}
+
+status_service() {
+  if [[ -f "${PID_FILE}" ]]; then
+    local pid
+    pid="$(cat "${PID_FILE}")"
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+      echo "running"
+      return 0
+    fi
+  fi
+  echo "stopped"
+  return 1
+}
+
+case "${1:-}" in
+  start) start_service ;;
+  stop) stop_service ;;
+  restart) stop_service; start_service ;;
+  status) status_service ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|status}"
+    exit 1
+    ;;
+esac

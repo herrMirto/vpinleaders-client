@@ -1,12 +1,14 @@
 PyQt6
 requests
-websocket-client
 Pillow
 screeninfo
 pynput
 numpy
 opencv-python
-websockets
 dbus-next
 mss
+pygame
+qrcode
 pyobjc; sys_platform == "darwin"
+frida
+psutil

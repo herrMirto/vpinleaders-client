@@ -1,0 +1,145 @@
+{
+  "_notes": [
+    "Compiled by hex analysis of bbh_170.nv",
+    "Score area matches tf_180 layout (P1 at 0x21109E4)",
+    "Stored P1 score was 3,701,510; user-reported 3,701,610 (100pt discrepancy - likely display rounding or misread)",
+    "0x21109DC appears to be a match/credit counter and is used as an optional fallback signal"
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "copyright": [],
+    "license": "GNU Lesser General Public License v3.0",
+    "platform": "stern-sam",
+    "roms": [
+      "bbh_170"
+    ]
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109E4"
+      },
+      {
+        "label": "Player 2",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109E8"
+      },
+      {
+        "label": "Player 3",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109EC"
+      },
+      {
+        "label": "Player 4",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21109F0"
+      }
+    ],
+    "match_counter": {
+      "label": "Match Counter",
+      "encoding": "int",
+      "start": "0x21109DC"
+    }
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102AB8"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102AD0"
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102AD8"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102AF0"
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102AF8"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102B10"
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102B18"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102B30"
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102B38"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102B50"
+      }
+    }
+  ],
+  "mode_champions": [
+    {
+      "label": "Open Season Champion",
+      "short_label": "Open Season",
+      "initials": {
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11,
+        "start": "0x2102B58"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102B70"
+      }
+    }
+  ]
+}

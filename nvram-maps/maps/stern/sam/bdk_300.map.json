@@ -1,0 +1,167 @@
+{
+  "_notes": [
+    "Derived from native NVRAM offsets.",
+    "This map focuses on current/last game score extraction.",
+    "Verify score encoding/scale with real NVRAM before production use."
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "platform": "stern-sam",
+    "roms": [
+      "bdk_300"
+    ],
+    "source_handler": "bdk_300"
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21108f8",
+        "endian": "little"
+      },
+      {
+        "label": "Player 2",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x21108fc",
+        "endian": "little"
+      },
+      {
+        "label": "Player 3",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110900",
+        "endian": "little"
+      },
+      {
+        "label": "Player 4",
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2110904",
+        "endian": "little"
+      }
+    ],
+    "match_counter": {
+      "label": "Match Counter",
+      "encoding": "int",
+      "start": "0x21108F0"
+    }
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102af0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b08"
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b10"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b28"
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b30"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b48"
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b50"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b68"
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b70"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102b88"
+      }
+    },
+    {
+      "label": "High Score #5",
+      "short_label": "#5",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102b90"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102ba8"
+      }
+    },
+    {
+      "label": "High Score #6",
+      "short_label": "#6",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102bb0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102bc8"
+      }
+    },
+    {
+      "label": "High Score #7",
+      "short_label": "#7",
+      "initials": {
+        "encoding": "ch",
+        "length": 10,
+        "start": "0x2102bd0"
+      },
+      "score": {
+        "encoding": "int",
+        "length": 4,
+        "start": "0x2102be8"
+      }
+    }
+  ]
+}

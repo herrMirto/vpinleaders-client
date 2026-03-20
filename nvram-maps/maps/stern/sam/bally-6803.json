@@ -1,0 +1,16 @@
+{
+  "_notes": [
+    "Bally 6803 MPU platform.",
+    "Typical NVRAM payload in VPX dumps is 2KB."
+  ],
+  "cpu": "6803",
+  "endian": "big",
+  "memory_layout": [
+    {
+      "label": "NVRAM",
+      "address": "0x0000",
+      "size": "0x0800",
+      "type": "nvram"
+    }
+  ]
+}

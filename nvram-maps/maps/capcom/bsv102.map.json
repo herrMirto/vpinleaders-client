@@ -1,0 +1,283 @@
+{
+  "_notes": [
+    "Derived from native NVRAM offsets.",
+    "This map focuses on current/last game score extraction.",
+    "Verify score encoding/scale with real NVRAM before production use.",
+    "Player score fields currently mirror top saved score slots until per-player RAM offsets are mapped."
+  ],
+  "_fileformat": 0.7,
+  "_metadata": {
+    "version": 1,
+    "platform": "capcom",
+    "roms": [
+      "bsv102"
+    ],
+    "source_handler": "bsv103"
+  },
+  "game_state": {
+    "scores": [
+      {
+        "label": "Player 1",
+        "encoding": "bcd",
+        "offsets": [
+          "0x21000f0",
+          "0x21000f2",
+          "0x21000f4",
+          "0x21000f6",
+          "0x21000f8",
+          "0x21000fa",
+          "0x21000fc",
+          "0x21000fe",
+          "0x2100100",
+          "0x2100102"
+        ]
+      },
+      {
+        "label": "Player 2",
+        "encoding": "bcd",
+        "offsets": [
+          "0x2100104",
+          "0x2100106",
+          "0x2100108",
+          "0x210010a",
+          "0x210010c",
+          "0x210010e",
+          "0x2100110",
+          "0x2100112",
+          "0x2100114",
+          "0x2100116"
+        ]
+      },
+      {
+        "label": "Player 3",
+        "encoding": "bcd",
+        "offsets": [
+          "0x2100118",
+          "0x210011a",
+          "0x210011c",
+          "0x2100120",
+          "0x2100122",
+          "0x2100124",
+          "0x2100128",
+          "0x210012a",
+          "0x210012c",
+          "0x2100130"
+        ]
+      },
+      {
+        "label": "Player 4",
+        "encoding": "bcd",
+        "offsets": [
+          "0x2100132",
+          "0x2100134",
+          "0x2100138",
+          "0x210013a",
+          "0x210013c",
+          "0x2100140",
+          "0x2100142",
+          "0x2100144",
+          "0x2100146",
+          "0x2100148"
+        ]
+      }
+    ]
+  },
+  "high_scores": [
+    {
+      "label": "Grand Champion",
+      "short_label": "GC",
+      "initials": {
+        "encoding": "ch",
+        "offsets": [
+          "0x210024a",
+          "0x210024c",
+          "0x210024e",
+          "0x2100250"
+        ]
+      },
+      "score": {
+        "encoding": "bcd",
+        "offsets": [
+          "0x21000f0",
+          "0x21000f2",
+          "0x21000f4",
+          "0x21000f6",
+          "0x21000f8",
+          "0x21000fa",
+          "0x21000fc",
+          "0x21000fe",
+          "0x2100100",
+          "0x2100102"
+        ]
+      }
+    },
+    {
+      "label": "High Score #1",
+      "short_label": "#1",
+      "initials": {
+        "encoding": "ch",
+        "offsets": [
+          "0x2100252",
+          "0x2100254",
+          "0x2100256",
+          "0x2100258"
+        ]
+      },
+      "score": {
+        "encoding": "bcd",
+        "offsets": [
+          "0x2100104",
+          "0x2100106",
+          "0x2100108",
+          "0x210010a",
+          "0x210010c",
+          "0x210010e",
+          "0x2100110",
+          "0x2100112",
+          "0x2100114",
+          "0x2100116"
+        ]
+      }
+    },
+    {
+      "label": "High Score #2",
+      "short_label": "#2",
+      "initials": {
+        "encoding": "ch",
+        "offsets": [
+          "0x210025a",
+          "0x210025c",
+          "0x210025e",
+          "0x2100260"
+        ]
+      },
+      "score": {
+        "encoding": "bcd",
+        "offsets": [
+          "0x2100118",
+          "0x210011a",
+          "0x210011c",
+          "0x2100120",
+          "0x2100122",
+          "0x2100124",
+          "0x2100128",
+          "0x210012a",
+          "0x210012c",
+          "0x2100130"
+        ]
+      }
+    },
+    {
+      "label": "High Score #3",
+      "short_label": "#3",
+      "initials": {
+        "encoding": "ch",
+        "offsets": [
+          "0x2100262",
+          "0x2100264",
+          "0x2100266",
+          "0x2100268"
+        ]
+      },
+      "score": {
+        "encoding": "bcd",
+        "offsets": [
+          "0x2100132",
+          "0x2100134",
+          "0x2100138",
+          "0x210013a",
+          "0x210013c",
+          "0x2100140",
+          "0x2100142",
+          "0x2100144",
+          "0x2100146",
+          "0x2100148"
+        ]
+      }
+    },
+    {
+      "label": "High Score #4",
+      "short_label": "#4",
+      "initials": {
+        "encoding": "ch",
+        "offsets": [
+          "0x210026a",
+          "0x210026c",
+          "0x210026e",
+          "0x2100272"
+        ]
+      },
+      "score": {
+        "encoding": "bcd",
+        "offsets": [
+          "0x210014a",
+          "0x210014c",
+          "0x210014e",
+          "0x2100150",
+          "0x2100152",
+          "0x2100154",
+          "0x2100156",
+          "0x2100158",
+          "0x210015a",
+          "0x210015c"
+        ]
+      }
+    },
+    {
+      "label": "High Score #5",
+      "short_label": "#5",
+      "initials": {
+        "encoding": "ch",
+        "offsets": [
+          "0x2100274",
+          "0x2100276",
+          "0x210027a",
+          "0x210027c"
+        ]
+      },
+      "score": {
+        "encoding": "bcd",
+        "offsets": [
+          "0x210015e",
+          "0x2100160",
+          "0x2100162",
+          "0x2100164",
+          "0x2100166",
+          "0x2100168",
+          "0x210016a",
+          "0x210016c",
+          "0x2100170",
+          "0x2100172"
+        ]
+      }
+    },
+    {
+      "label": "High Score #6",
+      "short_label": "#6",
+      "initials": {
+        "encoding": "ch",
+        "offsets": [
+          "0x210027e",
+          "0x2100282",
+          "0x2100284",
+          "0x2100286"
+        ]
+      },
+      "score": {
+        "encoding": "bcd",
+        "offsets": [
+          "0x2100174",
+          "0x2100178",
+          "0x210017a",
+          "0x210017c",
+          "0x2100180",
+          "0x2100182",
+          "0x2100184",
+          "0x2100188",
+          "0x210018a",
+          "0x210018c"
+        ]
+      }
+    }
+  ]
+}

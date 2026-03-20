@@ -21,9 +21,10 @@ FADE_TIME = 500
 
 
 class ProgressBar(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, color=(255, 255, 255, 96)):
         super().__init__(parent)
         self.progress = 1.0
+        self.color = color
         self.setFixedHeight(4)
 
     def setProgress(self, value):
@@ -33,7 +34,7 @@ class ProgressBar(QWidget):
     def paintEvent(self, event):
         from PyQt6.QtGui import QPainter, QColor
         painter = QPainter(self)
-        painter.setBrush(QColor(255, 255, 255, 64))
+        painter.setBrush(QColor(*self.color))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRect(0, 0, int(self.width() * self.progress), self.height())
 
@@ -41,10 +42,11 @@ class ProgressBar(QWidget):
 class NotificationOverlay(QWidget):
     closed = pyqtSignal()
 
-    def __init__(self, title, message):
+    def __init__(self, title, message, kind="info"):
         super().__init__()
         self.title_text = title
         self.message_text = message
+        self.kind = (kind or "info").lower()
 
         self._frontmost_app = None
         if platform.system() == "Darwin":
@@ -95,15 +97,26 @@ class NotificationOverlay(QWidget):
             # Helps keep it as a "tool-ish" window without messing focus
             self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
 
-        self.setStyleSheet("""
-            QWidget#MainFrame {
-                background-color: rgba(20, 20, 20, 240);
+        if self.kind == "error":
+            frame_bg = "rgba(48, 16, 16, 244)"
+            frame_border = "rgba(220, 72, 72, 220)"
+            title_color = "#ffb4b4"
+            progress_color = (220, 72, 72, 196)
+        else:
+            frame_bg = "rgba(20, 20, 20, 240)"
+            frame_border = "rgba(255, 255, 255, 20)"
+            title_color = "white"
+            progress_color = (255, 255, 255, 96)
+
+        self.setStyleSheet(f"""
+            QWidget#MainFrame {{
+                background-color: {frame_bg};
                 border-radius: 10px;
-                border: 1px solid rgba(255, 255, 255, 20);
-            }
-            QLabel { color: white; }
-            QLabel#Title { font-weight: bold; font-size: 14px; }
-            QLabel#Message { font-size: 12px; }
+                border: 2px solid {frame_border};
+            }}
+            QLabel {{ color: white; }}
+            QLabel#Title {{ color: {title_color}; font-weight: bold; font-size: 14px; }}
+            QLabel#Message {{ font-size: 12px; }}
         """)
 
         self.main_frame = QWidget(self)
@@ -120,7 +133,7 @@ class NotificationOverlay(QWidget):
         self.lbl_message.setObjectName("Message")
         self.lbl_message.setWordWrap(True)
 
-        self.progress_bar = ProgressBar()
+        self.progress_bar = ProgressBar(color=progress_color)
 
         layout.addWidget(self.lbl_title)
         layout.addWidget(self.lbl_message)
@@ -134,7 +147,14 @@ class NotificationOverlay(QWidget):
         self.y_pos = screen_geo.y() + 40
         self.move(self.final_x, self.y_pos)
 
-        self.setWindowOpacity(0.0)
+        # Opacity fade is not supported on all Linux compositor/plugin combos.
+        # When unsupported, Qt logs "This plugin does not support setting window
+        # opacity" and the animation has no effect.  Skip it on Linux entirely.
+        self._opacity_supported = platform.system() != "Linux"
+
+        if self._opacity_supported:
+            self.setWindowOpacity(0.0)
+
         self.remaining_time = DURATION
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
@@ -142,36 +162,42 @@ class NotificationOverlay(QWidget):
         self.animate_in()
 
     def animate_in(self):
-        self.anim = QPropertyAnimation(self, b"windowOpacity", self)
-        self.anim.setDuration(FADE_TIME)
-        self.anim.setStartValue(0.0)
-        self.anim.setEndValue(1.0)
-        self.anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-
-        # Show without activating
+        # Show without activating, then re-apply position.
+        # On Linux, window managers may ignore move() hints set before the window
+        # is mapped; calling move() again after show() ensures correct placement.
         self.show()
+        self.move(self.final_x, self.y_pos)
         self.raise_()
 
-        self.anim.start()
+        if self._opacity_supported:
+            self.anim = QPropertyAnimation(self, b"windowOpacity", self)
+            self.anim.setDuration(FADE_TIME)
+            self.anim.setStartValue(0.0)
+            self.anim.setEndValue(1.0)
+            self.anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+            self.anim.start()
+
         self.timer.start(16)
 
     def animate_out(self):
+        def _finish():
+            self.hide()
+            # Key fix: give focus back to whatever was active before our overlay.
+            # Do this AFTER the window is hidden.
+            self._restore_frontmost_app()
+            # Avoid immediate close() to reduce focus churn
+            QTimer.singleShot(250, self.deleteLater)
+
+        if not self._opacity_supported:
+            # No fade support on this platform — hide immediately.
+            _finish()
+            return
+
         self.anim = QPropertyAnimation(self, b"windowOpacity", self)
         self.anim.setDuration(FADE_TIME)
         self.anim.setStartValue(self.windowOpacity())
         self.anim.setEndValue(0.0)
         self.anim.setEasingCurve(QEasingCurve.Type.InQuad)
-
-        def _finish():
-            self.hide()
-
-            # Key fix: give focus back to whatever was active before our overlay.
-            # Do this AFTER the window is hidden.
-            self._restore_frontmost_app()
-
-            # Avoid immediate close() to reduce focus churn
-            QTimer.singleShot(250, self.deleteLater)
-
         self.anim.finished.connect(_finish)
         self.anim.start()
 

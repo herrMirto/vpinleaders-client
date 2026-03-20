@@ -8,8 +8,8 @@ Handles platform-specific quirks:
 
 Usage:
     from screenshot import capture_screen
-    img = capture_screen(screen_id=1)  # capture monitor 1
-    img = capture_screen()             # capture primary screen
+    img = capture_screen(screen_id=1, max_width=800)  # capture monitor 1
+    img = capture_screen()                            # capture primary screen
 """
 
 import os
@@ -19,15 +19,14 @@ import tempfile
 from PIL import Image, ImageGrab
 from screeninfo import get_monitors
 
+from app_logging import get_logger, log_message
 
-def _ts():
-    from datetime import datetime
-    now = datetime.now()
-    return now.strftime('%Y-%m-%d %H:%M:%S.') + f'{now.microsecond // 1000:03d}'
+
+LOGGER = get_logger('Screenshot')
 
 
 def _log(level, msg):
-    print(f"{_ts()} {level}  [Screenshot] {msg}")
+    log_message(LOGGER, level, msg)
 
 
 def _is_wayland():
@@ -51,26 +50,44 @@ def _find_tool(names):
     return None
 
 
-def capture_screen(screen_id=None):
+def _resize_if_needed(img, max_width):
+    if not img or not max_width or max_width <= 0:
+        return img
+
+    width, height = img.size
+    if width <= max_width:
+        return img
+
+    ratio = max_width / width
+    new_height = int(height * ratio)
+    resized = img.resize((max_width, new_height), Image.LANCZOS)
+    _log("INFO", f"Screenshot resized: {width}x{height} -> {max_width}x{new_height}")
+    return resized
+
+
+def capture_screen(screen_id=None, max_width=None):
     """
     Capture a screenshot from a specific monitor or the primary screen.
 
     Args:
         screen_id: Integer monitor index (0-based, matching screeninfo order).
                    If None, captures the primary screen.
+        max_width: Optional maximum width for the returned image.
 
     Returns:
         PIL.Image or None if capture failed.
     """
     try:
         if screen_id is not None:
-            return _capture_monitor(screen_id)
+            img = _capture_monitor(screen_id)
         else:
             _log("INFO", "Capturing primary screen")
             os_name = platform.system()
             if os_name == "Linux" and _is_wayland():
-                return _capture_wayland_full()
-            return ImageGrab.grab()
+                img = _capture_wayland_full()
+            else:
+                img = ImageGrab.grab()
+        return _resize_if_needed(img, max_width)
     except Exception as e:
         _log("ERROR", f"Screenshot capture failed: {e}")
         return None
