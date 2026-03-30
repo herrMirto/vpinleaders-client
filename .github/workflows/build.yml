@@ -7,6 +7,7 @@ on:
     paths-ignore:
       - "README.md"
       - "batocera/README.md"
+      - "batocera/vpinleaders-installer.sh"
   workflow_dispatch:
 
 jobs:

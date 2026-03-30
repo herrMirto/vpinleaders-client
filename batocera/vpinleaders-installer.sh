@@ -14,7 +14,6 @@ TMP_DIR="$(mktemp -d /tmp/vpinleaders-install.XXXXXX)"
 GITHUB_OWNER="${GITHUB_OWNER:-herrmirto}"
 GITHUB_REPO="${GITHUB_REPO:-vpinleaders-client}"
 RELEASE_FILE="${RELEASE_FILE:-vpinleaders-batocera-linux-x86_64.zip}"
-GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
 cleanup() {
   rm -rf "${TMP_DIR}"
@@ -46,41 +45,13 @@ check_arch() {
 
 download_bundle() {
   local target="${TMP_DIR}/${RELEASE_FILE}"
-  local auth_args=()
-  [[ -n "${GITHUB_TOKEN}" ]] && auth_args=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
-  local api_base="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions"
-  local artifact_id
-  local artifacts_json
-
+  local release_url="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest/download/${RELEASE_FILE}"
   log "GitHub owner: ${GITHUB_OWNER}"
   log "GitHub repo: ${GITHUB_REPO}"
-  log "GitHub API base: ${api_base}"
-  log "Artifact name: ${RELEASE_FILE}"
-
-  artifacts_json="$(
-    curl -fsSL "${auth_args[@]}" \
-      -H "Accept: application/vnd.github+json" \
-      "${api_base}/artifacts?per_page=100"
-  )"
-
-  artifact_id="$(
-    printf '%s' "${artifacts_json}" |
-    jq -r --arg name "${RELEASE_FILE}" '.artifacts[] | select(.name == $name) | .id' |
-    head -n 1
-  )"
-  if [[ -z "${artifact_id}" || "${artifact_id}" == "null" ]]; then
-    log "Artifact API response preview:"
-    printf '%s\n' "${artifacts_json}" | head -c 1200
-    echo
-    fail "Could not find artifact ${RELEASE_FILE} via GitHub Actions artifacts API"
-  fi
-
-  log "Artifact id: ${artifact_id}"
-  log "Downloading latest ${RELEASE_FILE} artifact"
-  curl -fL "${auth_args[@]}" \
-    -H "Accept: application/vnd.github+json" \
-    "${api_base}/artifacts/${artifact_id}/zip" \
-    -o "${target}"
+  log "Release file: ${RELEASE_FILE}"
+  log "Release URL: ${release_url}"
+  log "Downloading latest ${RELEASE_FILE} release asset"
+  curl -fL "${release_url}" -o "${target}"
   echo "${target}"
 }
 
@@ -208,7 +179,6 @@ main() {
   check_batocera
   check_arch
   need_cmd curl
-  need_cmd jq
   need_cmd unzip
 
   mkdir -p "${CONFIG_DIR}" "${LOG_DIR}" "${SERVICE_DIR}"
