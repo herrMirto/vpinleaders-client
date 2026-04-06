@@ -1841,13 +1841,10 @@ class NVRAMMonitor:
     def _windows_flat_supported_paths(self, candidate_paths: List[str]) -> List[str]:
         if os.name != 'nt':
             return []
-        root_cp = self._canon_path(self.nvram_dir)
         out: List[str] = []
         for p in candidate_paths:
             rom = os.path.splitext(os.path.basename(p))[0]
             if not self.repo.has_rom(rom):
-                continue
-            if self._canon_path(os.path.dirname(p)) != root_cp:
                 continue
             out.append(p)
         return out
