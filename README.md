@@ -38,7 +38,7 @@ xattr -d com.apple.quarantine VPinLeaders-macOS-arm64
 3. Run the client:
 
 ```bash
-./VPinLeaders-macOS-arm64 --register --machine-id YOUR_MACHINE_ID
+./VPinLeaders-macOS-arm64 --register --machine-id YOUR_MACHINE_ID --nvrams-folder /Your/tables/folder
 ```
 
 After registration, start it normally:
@@ -55,7 +55,7 @@ After registration, start it normally:
 4. Run registration:
 
 ```powershell
-.\VPinLeaders-Windows-x64.exe --register --machine-id YOUR_MACHINE_ID
+.\VPinLeaders-Windows-x64.exe --register --machine-id YOUR_MACHINE_ID --nvrams-folder C:\Your\tables\folder
 ```
 
 After registration, start it normally:
@@ -70,7 +70,8 @@ After registration, start it normally:
 2. Run registration with the regular binary:
 
 ```bash
-./VPinLeaders-Linux-x64/VPinLeaders-Linux-x64 --register --machine-id YOUR_MACHINE_ID
+./VPinLeaders-Linux-x64/VPinLeaders-Linux-x64 --register --machine-id YOUR_MACHINE_ID --nvrams-folder /home/user/Your/tables/folder
+
 ```
 
 3. Start the app with the bundled launcher:
