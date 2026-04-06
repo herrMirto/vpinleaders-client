@@ -70,7 +70,7 @@ After registration, start it normally:
 2. Run registration with the regular binary:
 
 ```bash
-./VPinLeaders-Linux-x64/VPinLeaders-Linux-x64 --register --machine-id YOUR_MACHINE_ID --nvrams-folder /home/user/Your/tables/folder
+./VPinLeaders-Linux-x64/VPinLeaders-Linux-x64 --register --machine-id YOUR_MACHINE_ID --nvrams-folder /Your/tables/folder
 
 ```
 
