@@ -476,6 +476,7 @@ class NVRAMMonitor:
         logger: Callable[[str, str], None],
         on_current_scores: Callable[[str, List[int], Optional[int]], None],
         on_game_end: Callable[[str, List[int], str, Optional[int]], None],
+        on_game_start: Optional[Callable[[str], None]] = None,
         on_status_message: Optional[Callable[[str, str], None]] = None,
         use_live_pinmame: bool = True,
         poll_interval_sec: float = 1.0,
@@ -489,6 +490,7 @@ class NVRAMMonitor:
         self._log = logger
         self.on_current_scores = on_current_scores
         self.on_game_end = on_game_end
+        self.on_game_start = on_game_start
         self.on_status_message = on_status_message
         self.use_live_pinmame = bool(use_live_pinmame)
         self.poll_interval_sec = max(0.2, poll_interval_sec)
@@ -845,6 +847,8 @@ class NVRAMMonitor:
                 st.attract_pattern_ts = 0.0
                 started_now = True
                 self._log('INFO', f'Game started (NVRAM): {rom}')
+                if self.on_game_start:
+                    self.on_game_start(rom)
 
         if st.active:
             if not started_now and not force_start:

@@ -829,6 +829,11 @@ def send_score(table_name, score, capture_screenshot=True):
 # =========================
 # SCORE EVENT PROCESSING
 # =========================
+def handle_game_start_event(rom_name):
+    _set_last_score(rom_name, 0)
+    _log('INFO', f'Game started: {rom_name} - score reset for manual send')
+
+
 def handle_current_scores_event(rom_name, scores, current_ball=None):
     if not scores:
         return
@@ -909,6 +914,7 @@ def run_nvram_monitor():
         logger=_log,
         on_current_scores=lambda rom, scores, current_ball: handle_current_scores_event(rom, scores, current_ball),
         on_game_end=lambda rom, scores, reason, duration: handle_game_end_event(rom, scores, reason, duration),
+        on_game_start=lambda rom: handle_game_start_event(rom),
         on_status_message=lambda title, message: handle_status_message_event(title, message),
         use_live_pinmame=NVRAM_LIVE_PINMAME,
         poll_interval_sec=NVRAM_POLL_INTERVAL_SEC,
