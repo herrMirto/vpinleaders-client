@@ -552,11 +552,11 @@ def _is_batocera():
 
 def show_notification_batocera(title_or_table, message_or_score, kind='info'):
     if isinstance(message_or_score, (int, float)):
-        title = f'Score Sent ({CURRENT_MODE.title()})'
+        title = f'VPinLeaders ({CURRENT_MODE.title()} sent)'
         score_str = f"{int(message_or_score):,}"
         message = f'Table: {title_or_table}\nScore: {score_str}'
     elif isinstance(message_or_score, str) and message_or_score.replace(',', '').isdigit():
-        title = f'Score Sent ({CURRENT_MODE.title()})'
+        title = f'VPinLeaders ({CURRENT_MODE.title()} sent)'
         score_str = f"{int(message_or_score.replace(',', '')):,}"
         message = f'Table: {title_or_table}\nScore: {score_str}'
     else:
@@ -707,11 +707,11 @@ def show_notification(title_or_table, message_or_score, kind='info'):
         return show_notification_batocera(title_or_table, message_or_score, kind)
 
     if isinstance(message_or_score, (int, float)):
-        title = f'Score Sent ({CURRENT_MODE.title()})'
+        title = f'VPinLeaders ({CURRENT_MODE.title()} sent)'
         score_str = f"{int(message_or_score):,}"
         message = f'Table: {title_or_table}\nScore: {score_str}'
     elif isinstance(message_or_score, str) and message_or_score.replace(',', '').isdigit():
-        title = f'Score Sent ({CURRENT_MODE.title()})'
+        title = f'VPinLeaders ({CURRENT_MODE.title()} sent)'
         score_str = f"{int(message_or_score.replace(',', '')):,}"
         message = f'Table: {title_or_table}\nScore: {score_str}'
     else:
