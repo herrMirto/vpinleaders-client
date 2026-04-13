@@ -649,7 +649,7 @@ def load_config():
 
     if 'send-mode' in config:
         send_mode = config['send-mode'].get('send_mode', 'automatic').strip().lower()
-        SEND_MODE = send_mode if send_mode in ('automatic', 'manual') else 'automatic'
+        SEND_MODE = send_mode if send_mode in ('automatic', 'manual', 'wovp') else 'automatic'
 
     if 'nvram' in config:
         base_dir = config['nvram'].get('base_dir', '').strip()
@@ -747,14 +747,15 @@ def send_score(table_name, score, capture_screenshot=True):
     if clean_score <= 0:
         return
 
-    if not API_URL or not API_KEY:
+    if SEND_MODE != 'wovp' and (not API_URL or not API_KEY):
         _log('ERROR', 'API_URL or API_KEY not configured. Cannot send score.')
         show_notification('Score Send Failed', 'API URL or API key not configured.', kind='error')
         return
 
-    _log('INFO', f'Sending score to API: {table_name} - {clean_score}')
+    _log('INFO', f'Sending score: {table_name} - {clean_score} (Mode: {SEND_MODE})')
 
-    if SCREENSHOT_ENABLED and capture_screenshot:
+    screenshot_is_required = (SEND_MODE == 'wovp')
+    if (SCREENSHOT_ENABLED or screenshot_is_required) and capture_screenshot:
         _log('INFO', 'Capturing screenshot for score submission')
         screenshot = capture_screen(
             screen_id=SCREENSHOT_SCREEN_ID,
@@ -762,6 +763,40 @@ def send_score(table_name, score, capture_screenshot=True):
         )
     else:
         screenshot = None
+
+    if SEND_MODE == 'wovp':
+        if not screenshot:
+            _log('ERROR', 'WoVP requires a screenshot. Aborting.')
+            show_notification('Score Send Failed', 'WoVP requires a screenshot.', kind='error')
+            return
+
+        import os
+        import tempfile
+        from wovp_client import WovpClient
+
+        wovp = WovpClient(CONFIG_PATH)
+
+        if screenshot.mode == 'RGBA':
+            screenshot = screenshot.convert('RGB')
+        
+        fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                screenshot.save(f, format='JPEG', quality=SCREENSHOT_JPEG_QUALITY, optimize=True)
+            
+            metadata = {"platform": "vpin", "romName": table_name}
+            result = wovp.submit(tmp_path, clean_score, metadata)
+            
+            _log('INFO', f'WoVP Score submitted successfully: {table_name} - {clean_score:,}')
+            show_notification(f"WoVP: {table_name}", clean_score)
+        except Exception as e:
+            _log('ERROR', f"WoVP API returned error: {e}")
+            show_notification('WoVP Send Failed', str(e), kind='error')
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                
+        return
 
     api_base = API_URL.rstrip('/')
     user_os = platform.system()
@@ -887,7 +922,7 @@ def handle_game_end_event(rom_name, scores, reason='', game_duration=None):
     if SEND_MODE == 'automatic':
         send_score(rom_name, best_score, capture_screenshot=False)
     else:
-        _log('INFO', 'Manual mode: score stored, waiting for manual send input')
+        _log('INFO', f'Manual mode ({SEND_MODE}): score stored, waiting for manual send input')
 
 
 def handle_status_message_event(title, message):
@@ -1191,6 +1226,11 @@ def _run_desktop_app():
             self.send_mode_group.addAction(self.act_manual)
             self.menu.addAction(self.act_manual)
 
+            self.act_wovp = QAction('WoVP Send', self.menu, checkable=True)
+            self.act_wovp.triggered.connect(lambda: self.set_send_mode('wovp'))
+            self.send_mode_group.addAction(self.act_wovp)
+            self.menu.addAction(self.act_wovp)
+
             self.menu.addSeparator()
 
             self.act_exit = QAction('Exit', self.menu)
@@ -1206,6 +1246,8 @@ def _run_desktop_app():
             self.act_tourn.setChecked(CURRENT_MODE == 'challenge')
             self.act_auto.setChecked(SEND_MODE == 'automatic')
             self.act_manual.setChecked(SEND_MODE == 'manual')
+            if hasattr(self, 'act_wovp'):
+                self.act_wovp.setChecked(SEND_MODE == 'wovp')
             self.setToolTip(f'VPin Score Tracker - {CURRENT_MODE.title()} ({SEND_MODE.title()})')
 
         def set_mode(self, selected_mode):
@@ -1253,7 +1295,7 @@ def _run_desktop_app():
             config['send-mode']['send_mode'] = mode
             save_config()
 
-            if mode == 'manual':
+            if mode in ('manual', 'wovp'):
                 _start_manual_send_listeners()
             else:
                 _stop_manual_send_listeners()
@@ -1294,7 +1336,7 @@ def _run_desktop_app():
     source_thread = threading.Thread(target=run_nvram_monitor, daemon=True)
     source_thread.start()
 
-    if SEND_MODE == 'manual':
+    if SEND_MODE in ('manual', 'wovp'):
         _start_manual_send_listeners()
 
     app._vpin_signal_timer = signal_timer
@@ -1304,8 +1346,8 @@ def _run_desktop_app():
 def _run_headless():
     _set_notification_sink(None)
     _install_headless_signal_handlers()
-    if SEND_MODE == 'manual':
-        _log('WARN', 'Manual send mode is not supported in headless mode; scores will not be submitted automatically')
+    if SEND_MODE in ('manual', 'wovp'):
+        _log('WARN', f'{SEND_MODE} send mode is not supported in headless mode; scores will not be submitted automatically')
     _log('INFO', 'Running in headless mode')
     run_nvram_monitor()
 
