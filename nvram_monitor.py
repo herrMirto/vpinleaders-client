@@ -516,6 +516,7 @@ class NVRAMMonitor:
         self._last_vpx_diag_ts = 0.0
         self._last_vpx_presence_diag_ts = 0.0
         self._last_any_vpx_seen_ts = 0.0
+        self.last_detected_table_path: Optional[str] = None
         self._last_attach_filter_diag_ts = 0.0
         self._vpx_proc_cache: Optional[List[Tuple[int, str, str]]] = None
         self._vpx_proc_cache_ts: float = 0.0
@@ -1775,6 +1776,8 @@ class NVRAMMonitor:
                 table_path = pid_table
             if not table_path:
                 continue
+            if table_path != self.last_detected_table_path:
+                self.last_detected_table_path = table_path
             table_dir = self._resolve_table_dir_from_arg(table_path)
             if not table_dir:
                 continue

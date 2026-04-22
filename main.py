@@ -410,8 +410,8 @@ def _log(level, msg):
 # =========================
 config = configparser.ConfigParser()
 
-CURRENT_MODE = 'scores'      # scores | challenge
-SEND_MODE = 'automatic'      # automatic | manual
+APP_MODE = 'vpinleaders'     # vpinleaders | wovp
+SEND_MODE = 'automatic'      # automatic | manual  (applies to VPinLeaders mode only)
 
 # API/Credentials
 API_URL = ''
@@ -447,9 +447,24 @@ CONFIG_PATH = _config_path()
 last_game_end = {}
 _last_logged_scores = {}
 
-# Last known score for manual mode triggers
+# Reference to the running NVRAMMonitor (set in run_nvram_monitor)
+_nvram_monitor_ref = None
+
+# Reference to the system tray (set in run_tray_ui, used for cross-thread signals)
+_tray_ref = None
+
+# WOVP integration state (persisted to [wovp] in config.ini)
+_wovp_api_key = ''
+_wovp_challenge_id = ''
+_wovp_challenge_name = ''
+
+# Last known score for manual mode triggers.
+# _last_score_vpx_file is snapshotted at game-end time so manual sends always
+# carry the VPX filename of the game that was actually played, not whatever
+# table happens to be running when the hotkey is pressed later.
 _last_score_rom = None
 _last_score_value = None
+_last_score_vpx_file = ''
 _last_score_lock = threading.Lock()
 _manual_send_lock = threading.Lock()
 _manual_send_inflight = False
@@ -527,16 +542,17 @@ def _build_pynput_hotkey(binding):
     return '+'.join(hotkey_tokens), '+'.join(display_tokens)
 
 
-def _set_last_score(rom_name, score):
-    global _last_score_rom, _last_score_value
+def _set_last_score(rom_name, score, vpx_file: str = ''):
+    global _last_score_rom, _last_score_value, _last_score_vpx_file
     with _last_score_lock:
         _last_score_rom = rom_name
         _last_score_value = score
+        _last_score_vpx_file = vpx_file
 
 
 def _get_last_score():
     with _last_score_lock:
-        return _last_score_rom, _last_score_value
+        return _last_score_rom, _last_score_value, _last_score_vpx_file
 
 
 def _set_notification_sink(sink):
@@ -552,11 +568,11 @@ def _is_batocera():
 
 def show_notification_batocera(title_or_table, message_or_score, kind='info'):
     if isinstance(message_or_score, (int, float)):
-        title = f'VPinLeaders ({CURRENT_MODE.title()} sent)'
+        title = f'VPinLeaders (score sent)'
         score_str = f"{int(message_or_score):,}"
         message = f'Table: {title_or_table}\nScore: {score_str}'
     elif isinstance(message_or_score, str) and message_or_score.replace(',', '').isdigit():
-        title = f'VPinLeaders ({CURRENT_MODE.title()} sent)'
+        title = f'VPinLeaders (score sent)'
         score_str = f"{int(message_or_score.replace(',', '')):,}"
         message = f'Table: {title_or_table}\nScore: {score_str}'
     else:
@@ -607,54 +623,88 @@ def load_config():
     global API_URL, API_KEY, MACHINE_ID
     global SCREENSHOT_ENABLED, SCREENSHOT_SCREEN_ID, SCREENSHOT_MAX_WIDTH, SCREENSHOT_JPEG_QUALITY
     global MANUAL_SEND_KEYBOARD_BINDING, MANUAL_SEND_JOYSTICK_BUTTONS
-    global CURRENT_MODE, SEND_MODE
+    global APP_MODE, SEND_MODE
     global NVRAM_DIR, LOG_FILE_PATH, CONFIG_PATH
+    global _wovp_api_key, _wovp_challenge_id, _wovp_challenge_name
 
     CONFIG_PATH = _config_path()
     config.read(CONFIG_PATH)
 
+    # ── Logging ───────────────────────────────────────────────────────────
     if 'logging' in config:
         log_file = config['logging'].get('file', '').strip()
         if log_file:
             LOG_FILE_PATH = os.path.expanduser(log_file)
-
     actual_log_file = configure_logging(log_file=LOG_FILE_PATH, console=True)
     if actual_log_file:
         LOG_FILE_PATH = actual_log_file
 
-    if 'credentials' in config:
-        API_URL = config['credentials'].get('api_url', '').strip()
-        API_KEY = config['credentials'].get('api_key', '').strip()
-        MACHINE_ID = config['credentials'].get('machine_id', '').strip()
+    # ── Active integration ────────────────────────────────────────────────
+    # New: [integration] active  |  Old: [send-mode] app_mode
+    if 'integration' in config:
+        raw_mode = config['integration'].get('active', 'vpinleaders').strip().lower()
+    elif 'send-mode' in config:
+        raw_mode = config['send-mode'].get('app_mode', 'vpinleaders').strip().lower()
+    else:
+        raw_mode = 'vpinleaders'
+    APP_MODE = raw_mode if raw_mode in ('vpinleaders', 'wovp') else 'vpinleaders'
 
+    # ── VPinLeaders credentials + send mode ───────────────────────────────
+    # New: [vpinleaders]  |  Old: [credentials] + [send-mode]
+    if 'vpinleaders' in config:
+        API_URL = config['vpinleaders'].get('api_url', '').strip()
+        API_KEY = config['vpinleaders'].get('api_key', '').strip()
+        MACHINE_ID = config['vpinleaders'].get('machine_id', '').strip()
+        raw_send = config['vpinleaders'].get('send_mode', 'automatic').strip().lower()
+    else:
+        if 'credentials' in config:
+            API_URL = config['credentials'].get('api_url', '').strip()
+            API_KEY = config['credentials'].get('api_key', '').strip()
+            MACHINE_ID = config['credentials'].get('machine_id', '').strip()
+        raw_send = 'automatic'
+        if 'send-mode' in config:
+            raw_send = config['send-mode'].get('send_mode', 'automatic').strip().lower()
+    if raw_send == 'wovp':   # legacy value — remap to manual
+        raw_send = 'manual'
+    SEND_MODE = raw_send if raw_send in ('automatic', 'manual') else 'automatic'
+
+    # ── Screenshot ────────────────────────────────────────────────────────
     if 'screenshot' in config:
         SCREENSHOT_ENABLED = config['screenshot'].get('enable', 'false').strip().lower() == 'true'
-        sid = config['screenshot'].get('capture_screen', '').strip()
+        # New key: screen_to_capture  |  Old key: capture_screen
+        sid = (
+            config['screenshot'].get('screen_to_capture')
+            or config['screenshot'].get('capture_screen')
+            or ''
+        ).strip()
         SCREENSHOT_SCREEN_ID = int(sid) if sid else None
 
-        for legacy_key in ('max_width', 'jpeg_quality'):
-            if config.has_option('screenshot', legacy_key):
-                config.remove_option('screenshot', legacy_key)
-
+    # ── Hotkeys ───────────────────────────────────────────────────────────
     if 'hotkeys' in config:
         if config.has_option('hotkeys', 'keyboard'):
-            MANUAL_SEND_KEYBOARD_BINDING = _parse_keyboard_binding(config['hotkeys'].get('keyboard', ''))
+            MANUAL_SEND_KEYBOARD_BINDING = _parse_keyboard_binding(
+                config['hotkeys'].get('keyboard', '')
+            )
         if config.has_option('hotkeys', 'joystick_buttons'):
             MANUAL_SEND_JOYSTICK_BUTTONS = _parse_button_combo(
                 config['hotkeys'].get('joystick_buttons', '')
             )
 
-    if 'score-mode' in config:
-        CURRENT_MODE = 'challenge' if config['score-mode'].getboolean('challenge', False) else 'scores'
+    # ── WoVP ──────────────────────────────────────────────────────────────
+    if 'wovp' in config:
+        _wovp_api_key = config['wovp'].get('api_key', '').strip()
+        _wovp_challenge_id = config['wovp'].get('selected_challenge_id', '').strip()
+        _wovp_challenge_name = config['wovp'].get('selected_challenge_name', '').strip()
 
-    if 'send-mode' in config:
-        send_mode = config['send-mode'].get('send_mode', 'automatic').strip().lower()
-        SEND_MODE = send_mode if send_mode in ('automatic', 'manual', 'wovp') else 'automatic'
-
+    # ── NVRAM ─────────────────────────────────────────────────────────────
     if 'nvram' in config:
         base_dir = config['nvram'].get('base_dir', '').strip()
         if base_dir:
             NVRAM_DIR = os.path.expanduser(base_dir)
+
+    # Normalize the in-memory config to the new format so every subsequent
+    # save_config() call writes canonical keys, even after loading an old file.
+    _migrate_config_to_new_format()
 
     if not HEADLESS_MODE:
         try:
@@ -669,7 +719,7 @@ def load_config():
     _log(
         'INFO',
         (
-            f'Config loaded. API={API_URL} | mode={CURRENT_MODE}/{SEND_MODE} | '
+            f'Config loaded. integration={APP_MODE} | API={API_URL} | send_mode={SEND_MODE} | '
             f'nvram_base_dir={NVRAM_DIR} | nvram_pattern={NVRAM_SCAN_PATTERN} | '
             f'manual_inputs=keyboard:{"on" if _keyboard_binding_enabled() else "off"},'
             f'joystick:{"on" if _joystick_binding_enabled() else "off"} | '
@@ -686,6 +736,42 @@ def save_config():
         _log('INFO', f'Config saved: {_config_path()}')
     except Exception as e:
         _log('ERROR', f'Error saving config: {e}')
+
+
+def _migrate_config_to_new_format():
+    """
+    Rewrites the in-memory config object to use the new section/key layout so
+    that every subsequent save_config() call writes the canonical format, even
+    when the file was originally in the old layout.
+    """
+    # [integration]
+    if 'integration' not in config:
+        config['integration'] = {}
+    config['integration']['active'] = APP_MODE
+
+    # [vpinleaders]
+    if 'vpinleaders' not in config:
+        config['vpinleaders'] = {}
+    config['vpinleaders']['api_url'] = API_URL or CONFIG_WEBSITE_URL
+    config['vpinleaders']['api_key'] = API_KEY
+    config['vpinleaders']['machine_id'] = MACHINE_ID
+    config['vpinleaders']['send_mode'] = SEND_MODE
+
+    # [screenshot] — rename capture_screen → screen_to_capture, drop unused keys
+    if 'screenshot' in config:
+        if config.has_option('screenshot', 'capture_screen'):
+            old_val = config['screenshot'].get('capture_screen', '0')
+            config.remove_option('screenshot', 'capture_screen')
+            if not config.has_option('screenshot', 'screen_to_capture'):
+                config['screenshot']['screen_to_capture'] = old_val
+        for legacy_key in ('max_width', 'jpeg_quality'):
+            if config.has_option('screenshot', legacy_key):
+                config.remove_option('screenshot', legacy_key)
+
+    # Remove old top-level sections entirely
+    for old_section in ('credentials', 'send-mode', 'score-mode', 'challenge'):
+        if config.has_section(old_section):
+            config.remove_section(old_section)
 
 
 def get_input_string(title, prompt, default_val=''):
@@ -707,11 +793,11 @@ def show_notification(title_or_table, message_or_score, kind='info'):
         return show_notification_batocera(title_or_table, message_or_score, kind)
 
     if isinstance(message_or_score, (int, float)):
-        title = f'VPinLeaders ({CURRENT_MODE.title()} sent)'
+        title = 'VPinLeaders (score sent)'
         score_str = f"{int(message_or_score):,}"
         message = f'Table: {title_or_table}\nScore: {score_str}'
     elif isinstance(message_or_score, str) and message_or_score.replace(',', '').isdigit():
-        title = f'VPinLeaders ({CURRENT_MODE.title()} sent)'
+        title = 'VPinLeaders (score sent)'
         score_str = f"{int(message_or_score.replace(',', '')):,}"
         message = f'Table: {title_or_table}\nScore: {score_str}'
     else:
@@ -740,22 +826,126 @@ def _format_send_error(exc):
     return msg
 
 
-def send_score(table_name, score, capture_screenshot=True):
+def _wovp_table_matches_challenge(vpx_file: str, challenge_name: str) -> bool:
+    """
+    Returns True when the VPX filename and the WoVP challenge name share at least
+    one meaningful word, indicating the player is on the correct table.
+
+    Normalisation applied to both sides before comparison:
+      - Strip .vpx extension
+      - Remove version tokens (v1, v1.17, 1.17, etc.)
+      - Lowercase, strip punctuation
+      - Discard words shorter than 3 characters (articles, 'of', 'a', …)
+
+    Returns True (allow) when either string is empty or the check cannot be
+    performed — better to submit than to silently block on bad data.
+    """
+    import re
+
+    if not vpx_file or not challenge_name:
+        return True
+
+    def _words(s: str) -> set:
+        s = os.path.splitext(s)[0]                         # drop .vpx
+        s = re.sub(r'\bv?\d+[\d.]*\b', ' ', s, flags=re.I)  # drop versions
+        s = re.sub(r'[^a-z0-9 ]', ' ', s.lower())          # alphanum only
+        return {w for w in s.split() if len(w) >= 3}
+
+    vpx_words = _words(vpx_file)
+    challenge_words = _words(challenge_name)
+
+    if not vpx_words or not challenge_words:
+        return True   # nothing useful to compare — allow
+
+    return bool(vpx_words & challenge_words)
+
+
+def _wovp_ready() -> bool:
+    """True when WoVP is the active mode and both api_key and a challenge are configured."""
+    return APP_MODE == 'wovp' and bool(_wovp_api_key) and bool(_wovp_challenge_id)
+
+
+def _save_wovp_challenge(challenge_id: str, challenge_name: str):
+    """Persists the selected WOVP challenge to config.ini."""
+    if 'wovp' not in config:
+        config['wovp'] = {}
+    config['wovp']['selected_challenge_id'] = challenge_id
+    config['wovp']['selected_challenge_name'] = challenge_name
+    save_config()
+
+
+def _validate_wovp_apikey():
+    """
+    Validates the WOVP API key in a background thread and shows a notification
+    with the result. Safe to call from any thread.
+    """
+    def _run():
+        try:
+            from wovp_client import WovpClient
+            wovp = WovpClient(CONFIG_PATH)
+            if not wovp.api_key:
+                show_notification('WoVP', 'No API key configured. Visit worldofvirtualpinball.com to get one.', kind='error')
+                return
+            data = wovp.validate_apikey()
+            first = data.get('firstName', '')
+            last = data.get('lastName', '')
+            name = f"{first} {last}".strip() or 'unknown user'
+            show_notification('WoVP Connected', f'Authenticated as {name}')
+        except Exception as e:
+            _log('ERROR', f'WOVP API key validation failed: {e}')
+            show_notification('WoVP Auth Failed', str(e), kind='error')
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _fetch_wovp_challenges():
+    """
+    Fetches active WOVP challenges in a background thread and sends them to
+    the tray via the challenges_ready signal so the menu can be rebuilt safely
+    on the Qt main thread.
+    """
+    def _run():
+        try:
+            from wovp_client import WovpClient
+            wovp = WovpClient(CONFIG_PATH)
+            if not wovp.api_key:
+                _log('WARN', 'WOVP: skipping challenge fetch — no api_key configured in [wovp]')
+                return
+            _log('INFO', 'WOVP: fetching active challenges…')
+            challenges = wovp.search_challenges()
+            _log('INFO', f'WOVP: {len(challenges)} challenge(s) loaded')
+            if _tray_ref is not None:
+                _tray_ref.challenges_ready.emit(challenges)
+            else:
+                _log('WARN', 'WOVP: challenges loaded but tray ref is not set yet')
+        except Exception as e:
+            _log('ERROR', f'WOVP challenges fetch failed: {e}')
+            show_notification('WoVP', f'Could not load challenges: {e}', kind='error')
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def send_score(table_name, score, capture_screenshot=True, vpx_file: str = ''):
     import io
 
     clean_score = _normalize_score(score)
     if clean_score <= 0:
         return
 
-    if SEND_MODE != 'wovp' and (not API_URL or not API_KEY):
-        _log('ERROR', 'API_URL or API_KEY not configured. Cannot send score.')
-        show_notification('Score Send Failed', 'API URL or API key not configured.', kind='error')
+    # Each integration only runs when it is the active APP_MODE and properly configured.
+    vpinleaders_ready = APP_MODE == 'vpinleaders' and bool(API_URL and API_KEY)
+    wovp_will_run = _wovp_ready()   # already checks APP_MODE == 'wovp'
+
+    if not vpinleaders_ready and not wovp_will_run:
+        _log('ERROR', f'No submission target ready (app_mode={APP_MODE}).')
+        show_notification('Score Send Failed', 'API not configured for the active mode.', kind='error')
         return
 
-    _log('INFO', f'Sending score: {table_name} - {clean_score} (Mode: {SEND_MODE})')
+    _log('INFO', f'Sending score: {table_name} - {clean_score} (app_mode={APP_MODE}, send_mode={SEND_MODE})')
 
-    screenshot_is_required = (SEND_MODE == 'wovp')
-    if (SCREENSHOT_ENABLED or screenshot_is_required) and capture_screenshot:
+    # Screenshot: always needed for WoVP (proof of score); optional for VPinLeaders
+    screenshot_needed = SCREENSHOT_ENABLED or wovp_will_run
+    if screenshot_needed and capture_screenshot:
         _log('INFO', 'Capturing screenshot for score submission')
         screenshot = capture_screen(
             screen_id=SCREENSHOT_SCREEN_ID,
@@ -764,108 +954,127 @@ def send_score(table_name, score, capture_screenshot=True):
     else:
         screenshot = None
 
-    if SEND_MODE == 'wovp':
-        if not screenshot:
-            _log('ERROR', 'WoVP requires a screenshot. Aborting.')
-            show_notification('Score Send Failed', 'WoVP requires a screenshot.', kind='error')
-            return
+    # ---- VPinLeaders.com submission ----
+    if vpinleaders_ready:
+        user_os = platform.system()
+        if user_os == 'Darwin':
+            user_os = 'macOS'
+        if user_os == 'Linux' and platform.uname().node == "BATOCERA":
+            user_os = 'Batocera'
 
+        try:
+            api_base = API_URL.rstrip('/')
+            endpoint = f'{api_base}/api/submit-score'
+
+            if screenshot:
+                sc = screenshot.convert('RGB') if screenshot.mode == 'RGBA' else screenshot
+                buffer = io.BytesIO()
+                sc.save(buffer, format='JPEG', quality=SCREENSHOT_JPEG_QUALITY, optimize=True)
+                buffer.seek(0)
+                files = {'screenshot': ('screenshot.jpg', buffer, 'image/jpeg')}
+                data = {
+                    'apiKey': API_KEY,
+                    'machineID': MACHINE_ID,
+                    'romName': table_name,
+                    'score': str(clean_score),
+                    'user_os': user_os,
+                }
+                r = requests.post(endpoint, files=files, data=data, timeout=30)
+            else:
+                payload = {
+                    'apiKey': API_KEY,
+                    'romName': table_name,
+                    'machineID': MACHINE_ID,
+                    'score': clean_score,
+                    'user_os': user_os,
+                }
+                r = requests.post(endpoint, json=payload, timeout=10)
+
+            r.raise_for_status()
+            result = r.json()
+            _log('INFO', f'Response: status={r.status_code}, result={result}')
+
+            if result.get('success'):
+                table_display = result.get('tableName', table_name)
+                _log('INFO', f'Score submitted successfully: {table_display} - {clean_score:,}')
+                show_notification(table_display, clean_score)
+            else:
+                error_msg = str(result.get('error', 'Unknown'))
+                _log('ERROR', f"API returned error: {error_msg}")
+                show_notification('Score Send Failed', error_msg, kind='error')
+
+        except Exception as e:
+            _log('ERROR', f'Error sending score to VPinLeaders API: {e}')
+            show_notification('Score Send Failed', _format_send_error(e), kind='error')
+
+    # ---- WOVP submission (manual send only, runs in parallel with vpinleaders.com) ----
+    if wovp_will_run:
         import os
         import tempfile
         from wovp_client import WovpClient
 
-        wovp = WovpClient(CONFIG_PATH)
+        if not screenshot:
+            _log('ERROR', 'WoVP: screenshot could not be captured. Skipping WOVP submission.')
+            show_notification('WoVP Send Failed', 'Could not capture screenshot.', kind='error')
+            return
 
-        if screenshot.mode == 'RGBA':
-            screenshot = screenshot.convert('RGB')
-        
-        fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+        # Use the VPX filename snapshotted at game-end time (passed in via vpx_file=).
+        # Fall back to the live monitor only as a last resort — by the time a manual
+        # send is triggered the user may have already loaded a different table.
+        effective_vpx = vpx_file or (
+            os.path.basename(_nvram_monitor_ref.last_detected_table_path)
+            if _nvram_monitor_ref and _nvram_monitor_ref.last_detected_table_path
+            else ''
+        )
+
+        if not effective_vpx:
+            _log('ERROR', 'WoVP: could not determine VPX filename. Aborting WOVP submission.')
+            show_notification(
+                'WoVP Send Failed',
+                'Could not detect the VPX file. Make sure the table is launched through VPX.',
+                kind='error',
+            )
+            return
+
+        if not _wovp_table_matches_challenge(effective_vpx, _wovp_challenge_name):
+            msg = (
+                f'Table mismatch: playing "{effective_vpx}" '
+                f'but challenge is "{_wovp_challenge_name}". Submission aborted.'
+            )
+            _log('ERROR', f'WoVP: {msg}')
+            show_notification('WoVP Send Failed', msg, kind='error')
+            return
+
+        wovp_sc = screenshot.convert('RGB') if screenshot.mode == 'RGBA' else screenshot
+        fd, tmp_path = tempfile.mkstemp(suffix='.jpg')
         try:
             with os.fdopen(fd, 'wb') as f:
-                screenshot.save(f, format='JPEG', quality=SCREENSHOT_JPEG_QUALITY, optimize=True)
-            
-            metadata = {"platform": "vpin", "romName": table_name}
-            result = wovp.submit(tmp_path, clean_score, metadata)
-            
-            _log('INFO', f'WoVP Score submitted successfully: {table_name} - {clean_score:,}')
-            show_notification(f"WoVP: {table_name}", clean_score)
+                wovp_sc.save(f, format='JPEG', quality=SCREENSHOT_JPEG_QUALITY, optimize=True)
+
+            wovp = WovpClient(CONFIG_PATH)
+            wovp.submit(
+                screenshot_path=tmp_path,
+                score=clean_score,
+                rom=table_name,
+                challenge_id=_wovp_challenge_id,
+                vpx_file=effective_vpx,
+                playing_platform=0,
+            )
+            _log('INFO', f'WoVP: score submitted — {table_name} {clean_score:,} → "{_wovp_challenge_name}"')
+            show_notification(f'WoVP: {table_name}', clean_score)
         except Exception as e:
-            _log('ERROR', f"WoVP API returned error: {e}")
+            _log('ERROR', f'WoVP submission failed: {e}')
             show_notification('WoVP Send Failed', str(e), kind='error')
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
-                
-        return
-
-    api_base = API_URL.rstrip('/')
-    user_os = platform.system()
-    if user_os == 'Darwin':
-        user_os = 'macOS'
-    if user_os == 'Linux' and platform.uname().node == "BATOCERA":
-        user_os = 'Batocera'
-
-    try:
-        endpoint = f'{api_base}/api/submit-score'
-
-        if screenshot:
-            if screenshot.mode == 'RGBA':
-                screenshot = screenshot.convert('RGB')
-
-            buffer = io.BytesIO()
-            screenshot.save(buffer, format='JPEG', quality=SCREENSHOT_JPEG_QUALITY, optimize=True)
-            buffer.seek(0)
-
-            files = {'screenshot': ('screenshot.jpg', buffer, 'image/jpeg')}
-            data = {
-                'apiKey': API_KEY,
-                'machineID': MACHINE_ID,
-                'romName': table_name,
-                'score': str(clean_score),
-                'user_os': user_os,
-            }
-            if CURRENT_MODE == 'challenge':
-                c_id = config['challenge'].get('challenge_id', '') if 'challenge' in config else ''
-                data['challenge_id'] = c_id
-
-            r = requests.post(endpoint, files=files, data=data, timeout=30)
-        else:
-            payload = {
-                'apiKey': API_KEY,
-                'romName': table_name,
-                'machineID': MACHINE_ID,
-                'score': clean_score,
-                'user_os': user_os,
-            }
-            if CURRENT_MODE == 'challenge':
-                c_id = config['challenge'].get('challenge_id', '') if 'challenge' in config else ''
-                payload['challenge_id'] = c_id
-
-            r = requests.post(endpoint, json=payload, timeout=10)
-
-        r.raise_for_status()
-        result = r.json()
-        _log('INFO', f'Response: status={r.status_code}, result={result}')
-
-        if result.get('success'):
-            table_display = result.get('tableName', table_name)
-            _log('INFO', f'Score submitted successfully: {table_display} - {clean_score:,}')
-            show_notification(table_display, clean_score)
-        else:
-            error_msg = str(result.get('error', 'Unknown'))
-            _log('ERROR', f"API returned error: {error_msg}")
-            show_notification('Score Send Failed', error_msg, kind='error')
-
-    except Exception as e:
-        _log('ERROR', f'Error sending score to API: {e}')
-        show_notification('Score Send Failed', _format_send_error(e), kind='error')
 
 
 # =========================
 # SCORE EVENT PROCESSING
 # =========================
 def handle_game_start_event(rom_name):
-    _set_last_score(rom_name, 0)
+    _set_last_score(rom_name, 0, '')
     _log('INFO', f'Game started: {rom_name} - score reset for manual send')
 
 
@@ -917,12 +1126,19 @@ def handle_game_end_event(rom_name, scores, reason='', game_duration=None):
 
     _log('INFO', f'Game over detected: {rom_name} (reason={reason}, duration={game_duration})')
     _log('INFO', f'Final score selected: {rom_name} - {best_score:,}')
-    _set_last_score(rom_name, best_score)
 
-    if SEND_MODE == 'automatic':
-        send_score(rom_name, best_score, capture_screenshot=False)
+    # Snapshot the VPX filename NOW, while the right table is still the active process.
+    # Manual sends may arrive seconds or minutes later when a different table is loaded.
+    vpx_file = ''
+    if _nvram_monitor_ref is not None and _nvram_monitor_ref.last_detected_table_path:
+        vpx_file = os.path.basename(_nvram_monitor_ref.last_detected_table_path)
+    _set_last_score(rom_name, best_score, vpx_file)
+
+    if APP_MODE == 'vpinleaders' and SEND_MODE == 'automatic':
+        send_score(rom_name, best_score, capture_screenshot=False, vpx_file=vpx_file)
     else:
-        _log('INFO', f'Manual mode ({SEND_MODE}): score stored, waiting for manual send input')
+        mode_label = 'WoVP (manual)' if APP_MODE == 'wovp' else f'VPinLeaders ({SEND_MODE})'
+        _log('INFO', f'{mode_label}: score stored, waiting for manual send')
 
 
 def handle_status_message_event(title, message):
@@ -933,6 +1149,8 @@ def handle_status_message_event(title, message):
 # NVRAM SOURCE
 # =========================
 def run_nvram_monitor():
+    global _nvram_monitor_ref
+
     maps_root = resource_path('nvram-maps')
     _log(
         'INFO',
@@ -957,6 +1175,7 @@ def run_nvram_monitor():
         idle_end_sec=NVRAM_IDLE_END_SEC,
         min_game_duration_sec=MIN_GAME_DURATION_SEC,
     )
+    _nvram_monitor_ref = monitor
     monitor.run_forever()
 
 
@@ -970,7 +1189,7 @@ _joybutton_listener = None
 def _trigger_manual_send(source):
     global _manual_send_inflight, _manual_send_last_signature, _manual_send_last_ts
 
-    rom, score = _get_last_score()
+    rom, score, vpx_file = _get_last_score()
     if rom is None or score is None or score <= 0:
         _log('WARN', f'{source} pressed but no score available to send')
         show_notification('No Score', 'No score available to send')
@@ -989,12 +1208,12 @@ def _trigger_manual_send(source):
         _manual_send_last_signature = signature
         _manual_send_last_ts = now
 
-    _log('INFO', f'{source} triggered: sending {rom} - {score:,}')
+    _log('INFO', f'{source} triggered: sending {rom} - {score:,} (vpx={vpx_file or "unknown"})')
 
     def _runner():
         global _manual_send_inflight
         try:
-            send_score(rom, score, capture_screenshot=SCREENSHOT_ENABLED)
+            send_score(rom, score, capture_screenshot=True, vpx_file=vpx_file)
         finally:
             with _manual_send_lock:
                 _manual_send_inflight = False
@@ -1103,6 +1322,140 @@ class _JoyButtonListener:
                 pass
 
 
+def _check_macos_accessibility() -> bool:
+    """
+    On macOS, returns True if the process has Accessibility (AX) trust.
+    Logs a warning and emits a notification if trust is missing — pynput's
+    GlobalHotKeys starts without error but receives no events in that case.
+    Returns True on non-macOS platforms (no check needed).
+    """
+    if platform.system() != 'Darwin':
+        return True
+    try:
+        import ctypes
+        ax = ctypes.cdll.LoadLibrary(
+            '/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices'
+        )
+        ax.AXIsProcessTrusted.restype = ctypes.c_bool
+        trusted = ax.AXIsProcessTrusted()
+        if not trusted:
+            _log(
+                'WARN',
+                'macOS Accessibility permission not granted — hotkey will not be captured. '
+                'Open System Settings → Privacy & Security → Accessibility and enable this app.',
+            )
+            show_notification(
+                'Accessibility Permission Required',
+                'Go to System Settings → Privacy & Security → Accessibility and enable this app.',
+                kind='error',
+            )
+        return trusted
+    except Exception as exc:
+        _log('WARN', f'Could not verify macOS Accessibility trust: {exc}')
+        return True   # assume OK if we can't check
+
+
+class _HotkeyListener:
+    """
+    Global hotkey listener built on pynput.keyboard.Listener (lower level than
+    GlobalHotKeys).  Avoids a pynput macOS bug where GlobalHotKeys._on_press()
+    declares a required 'injected' positional argument that the darwin backend
+    never passes, raising TypeError on every keypress.
+
+    Using *args in our own callbacks makes this forward-compatible with any
+    future pynput signature change.  Modifier left/right variants (cmd_l,
+    shift_r, …) are normalised to their base form before matching.
+    """
+
+    _MODIFIER_ALIASES: dict = {}   # populated lazily on first start()
+
+    def __init__(self, hotkey_str: str, callback):
+        self._hotkey_str = hotkey_str
+        self._callback = callback
+        self._pressed: set = set()
+        self._target: frozenset = frozenset()
+        self._listener = None
+
+    @classmethod
+    def _build_aliases(cls) -> dict:
+        if not cls._MODIFIER_ALIASES:
+            try:
+                from pynput.keyboard import Key
+                for variant, base in [
+                    ('cmd_l', 'cmd'), ('cmd_r', 'cmd'),
+                    ('shift_l', 'shift'), ('shift_r', 'shift'),
+                    ('ctrl_l', 'ctrl'), ('ctrl_r', 'ctrl'),
+                    ('alt_l', 'alt'), ('alt_r', 'alt'),
+                    ('alt_gr', 'alt'),
+                ]:
+                    try:
+                        cls._MODIFIER_ALIASES[getattr(Key, variant)] = getattr(Key, base)
+                    except AttributeError:
+                        pass
+            except Exception:
+                pass
+        return cls._MODIFIER_ALIASES
+
+    @staticmethod
+    def _parse_target(hotkey_str) -> frozenset:
+        from pynput.keyboard import Key, KeyCode
+        keys = set()
+        for token in hotkey_str.split('+'):
+            token = token.strip()
+            if token.startswith('<') and token.endswith('>'):
+                name = token[1:-1]
+                try:
+                    keys.add(getattr(Key, name))
+                except AttributeError:
+                    pass
+            elif token:
+                keys.add(KeyCode.from_char(token.lower()))
+        return frozenset(keys)
+
+    def _normalize(self, key):
+        """Collapse left/right modifier variants and lowercase char keys."""
+        key = self._build_aliases().get(key, key)
+        try:
+            from pynput.keyboard import KeyCode
+            if isinstance(key, KeyCode) and key.char:
+                key = KeyCode.from_char(key.char.lower())
+        except Exception:
+            pass
+        return key
+
+    def _on_press(self, key, *args):
+        try:
+            self._pressed.add(self._normalize(key))
+            if self._target and self._target <= self._pressed:
+                self._callback()
+        except Exception:
+            pass
+
+    def _on_release(self, key, *args):
+        try:
+            self._pressed.discard(self._normalize(key))
+        except Exception:
+            pass
+
+    def start(self):
+        from pynput import keyboard as pynput_keyboard
+        self._target = self._parse_target(self._hotkey_str)
+        self._listener = pynput_keyboard.Listener(
+            on_press=self._on_press,
+            on_release=self._on_release,
+        )
+        self._listener.daemon = True
+        self._listener.start()
+
+    def stop(self):
+        if self._listener is not None:
+            try:
+                self._listener.stop()
+            except Exception:
+                pass
+            self._listener = None
+
+
 def _start_hotkey_listener():
     global _hotkey_listener
     _stop_hotkey_listener()
@@ -1112,14 +1465,20 @@ def _start_hotkey_listener():
         return
 
     try:
-        from pynput import keyboard as pynput_keyboard
+        from pynput import keyboard as _pynput_kb  # noqa — import check only
     except Exception as exc:
         _log('WARN', f'Hotkey listener unavailable: pynput import failed ({exc})')
         return
 
+    _check_macos_accessibility()
     _log('INFO', f'Starting hotkey listener: {display_combo}')
-    _hotkey_listener = pynput_keyboard.GlobalHotKeys({hotkey_combo: _on_hotkey_pressed})
-    _hotkey_listener.daemon = True
+    if platform.system() == 'Darwin':
+        # GlobalHotKeys has a broken _on_press signature on some pynput builds on macOS
+        # (missing 'injected' argument). Use the custom listener as a workaround.
+        _hotkey_listener = _HotkeyListener(hotkey_combo, _on_hotkey_pressed)
+    else:
+        _hotkey_listener = _pynput_kb.GlobalHotKeys({hotkey_combo: _on_hotkey_pressed})
+        _hotkey_listener.daemon = True
     _hotkey_listener.start()
 
 
@@ -1190,46 +1549,91 @@ def _run_desktop_app():
 
     class VPinScoreTray(QSystemTrayIcon):
         notify_requested = pyqtSignal(str, str, str)
+        # Emitted from a background thread after challenges are fetched;
+        # connected to _on_challenges_ready which runs on the Qt main thread.
+        challenges_ready = pyqtSignal(list)
 
         def __init__(self, icon, parent=None):
             super().__init__(icon, parent)
-            self.setToolTip(f'VPin Score Tracker - {CURRENT_MODE.title()} ({SEND_MODE.title()})')
             self.notify_requested.connect(self.display_overlay)
+            self.challenges_ready.connect(self._on_challenges_ready)
 
             self.menu = QMenu(parent)
 
-            self.mode_group = QActionGroup(self.menu)
-            self.mode_group.setExclusive(True)
+            # ── VPinLeaders submenu ────────────────────────────────────
+            self.vpinleaders_menu = QMenu('VPinLeaders', self.menu)
 
-            self.act_score = QAction('Score Mode', self.menu, checkable=True)
-            self.act_score.triggered.connect(lambda: self.set_mode('scores'))
-            self.mode_group.addAction(self.act_score)
-            self.menu.addAction(self.act_score)
+            # Plain checkable action — no cross-submenu QActionGroup (causes SIGTRAP
+            # in PyQt6 when actions are parented to different menus than the group).
+            # Mutual exclusivity is handled manually inside set_app_mode().
+            self.act_vpinleaders_active = QAction('Active', self.vpinleaders_menu)
+            self.act_vpinleaders_active.setCheckable(True)
+            self.act_vpinleaders_active.triggered.connect(lambda: self.set_app_mode('vpinleaders'))
+            self.vpinleaders_menu.addAction(self.act_vpinleaders_active)
+            self.vpinleaders_menu.addSeparator()
 
-            self.act_tourn = QAction('Tournament Mode', self.menu, checkable=True)
-            self.act_tourn.triggered.connect(lambda: self.set_mode('challenge'))
-            self.mode_group.addAction(self.act_tourn)
-            self.menu.addAction(self.act_tourn)
-
-            self.menu.addSeparator()
-
-            self.send_mode_group = QActionGroup(self.menu)
+            self.send_mode_group = QActionGroup(self.vpinleaders_menu)
             self.send_mode_group.setExclusive(True)
 
-            self.act_auto = QAction('Automatic Send', self.menu, checkable=True)
+            self.act_auto = QAction('Automatic', self.vpinleaders_menu)
+            self.act_auto.setCheckable(True)
             self.act_auto.triggered.connect(lambda: self.set_send_mode('automatic'))
             self.send_mode_group.addAction(self.act_auto)
-            self.menu.addAction(self.act_auto)
+            self.vpinleaders_menu.addAction(self.act_auto)
 
-            self.act_manual = QAction('Manual Send (Hotkey/Joy)', self.menu, checkable=True)
+            self.act_manual = QAction('Manual (Hotkey/Joy)', self.vpinleaders_menu)
+            self.act_manual.setCheckable(True)
             self.act_manual.triggered.connect(lambda: self.set_send_mode('manual'))
             self.send_mode_group.addAction(self.act_manual)
-            self.menu.addAction(self.act_manual)
+            self.vpinleaders_menu.addAction(self.act_manual)
 
-            self.act_wovp = QAction('WoVP Send', self.menu, checkable=True)
-            self.act_wovp.triggered.connect(lambda: self.set_send_mode('wovp'))
-            self.send_mode_group.addAction(self.act_wovp)
-            self.menu.addAction(self.act_wovp)
+            self.menu.addMenu(self.vpinleaders_menu)
+
+            # ── WoVP submenu ───────────────────────────────────────────
+            self.wovp_menu = QMenu('WoVP', self.menu)
+
+            self.act_wovp_active = QAction('Active', self.wovp_menu)
+            self.act_wovp_active.setCheckable(True)
+            self.act_wovp_active.triggered.connect(lambda: self.set_app_mode('wovp'))
+            self.wovp_menu.addAction(self.act_wovp_active)
+            self.wovp_menu.addSeparator()
+
+            # Fixed label: WoVP always fires on manual send — not user-configurable
+            wovp_mode_label = QAction('Manual Send', self.wovp_menu)
+            wovp_mode_label.setEnabled(False)
+            self.wovp_menu.addAction(wovp_mode_label)
+
+            self.wovp_menu.addSeparator()
+
+            # Challenges submenu — rebuilt dynamically via _on_challenges_ready.
+            # Accessible whenever an api_key is present (not gated on active mode)
+            # so the user can pre-configure a challenge before switching.
+            self.wovp_challenges_menu = QMenu('Challenges', self.wovp_menu)
+            self._challenges_action_group = None
+            placeholder = QAction('Loading…', self.wovp_challenges_menu)
+            placeholder.setEnabled(False)
+            self.wovp_challenges_menu.addAction(placeholder)
+            self.wovp_menu.addMenu(self.wovp_challenges_menu)
+
+            self.menu.addMenu(self.wovp_menu)
+
+            # ── Screenshots submenu ────────────────────────────────────
+            self.screenshots_menu = QMenu('Screenshots', self.menu)
+
+            # Enable/Disable toggle — grayed out in WoVP (screenshot is mandatory there)
+            self.act_screenshot_enable = QAction('Enable', self.screenshots_menu)
+            self.act_screenshot_enable.setCheckable(True)
+            self.act_screenshot_enable.triggered.connect(self._toggle_screenshot)
+            self.screenshots_menu.addAction(self.act_screenshot_enable)
+
+            self.screenshots_menu.addSeparator()
+
+            # One radio action per connected screen — populated from live QApplication data
+            self.screen_action_group = QActionGroup(self.screenshots_menu)
+            self.screen_action_group.setExclusive(True)
+            self._populate_screen_actions()
+
+            self.menu.addMenu(self.screenshots_menu)
 
             self.menu.addSeparator()
 
@@ -1238,68 +1642,156 @@ def _run_desktop_app():
             self.menu.addAction(self.act_exit)
 
             self.setContextMenu(self.menu)
-            self.update_menu_state()
             self.active_notification = None
+            self.update_menu_state()
 
         def update_menu_state(self):
-            self.act_score.setChecked(CURRENT_MODE == 'scores')
-            self.act_tourn.setChecked(CURRENT_MODE == 'challenge')
+            # "Active" radio buttons inside each submenu
+            self.act_vpinleaders_active.setChecked(APP_MODE == 'vpinleaders')
+            self.act_wovp_active.setChecked(APP_MODE == 'wovp')
+
+            # VPinLeaders send-mode options: only interactive when that mode is active
             self.act_auto.setChecked(SEND_MODE == 'automatic')
             self.act_manual.setChecked(SEND_MODE == 'manual')
-            if hasattr(self, 'act_wovp'):
-                self.act_wovp.setChecked(SEND_MODE == 'wovp')
-            self.setToolTip(f'VPin Score Tracker - {CURRENT_MODE.title()} ({SEND_MODE.title()})')
+            self.act_auto.setEnabled(APP_MODE == 'vpinleaders')
+            self.act_manual.setEnabled(APP_MODE == 'vpinleaders')
 
-        def set_mode(self, selected_mode):
-            global CURRENT_MODE
+            # WoVP challenges: accessible whenever api_key is present so the user
+            # can pre-configure a challenge without having to be in WoVP mode first.
+            self.wovp_challenges_menu.setEnabled(bool(_wovp_api_key))
 
-            if 'score-mode' not in config:
-                config['score-mode'] = {}
+            # Screenshots
+            if APP_MODE == 'wovp':
+                # Screenshot is mandatory for WoVP proof — show as always-on, not togglable
+                self.act_screenshot_enable.setChecked(True)
+                self.act_screenshot_enable.setEnabled(False)
+            else:
+                self.act_screenshot_enable.setChecked(SCREENSHOT_ENABLED)
+                self.act_screenshot_enable.setEnabled(True)
+            # Screen list: always selectable (useful in both modes)
+            screen_enabled = SCREENSHOT_ENABLED or APP_MODE == 'wovp'
+            for act in self.screen_action_group.actions():
+                act.setEnabled(screen_enabled)
 
-            if selected_mode == 'scores':
-                CURRENT_MODE = 'scores'
-                config['score-mode']['scores'] = 'true'
-                config['score-mode']['challenge'] = 'false'
-                save_config()
-                self.update_menu_state()
-                return
+            # Tooltip
+            if APP_MODE == 'wovp':
+                challenge = _wovp_challenge_name or 'no challenge selected'
+                tooltip = f'VPinLeaders Client | WoVP: {challenge}'
+            else:
+                send_label = 'Auto' if SEND_MODE == 'automatic' else 'Manual'
+                tooltip = f'VPinLeaders Client ({send_label})'
+            self.setToolTip(tooltip)
 
-            current_val = ''
-            if selected_mode == 'challenge' and 'challenge' in config:
-                current_val = config['challenge'].get('challenge_id', '')
+        def set_app_mode(self, mode):
+            global APP_MODE
+            APP_MODE = mode
 
-            new_id = get_input_string('Challenge Mode', 'Enter Challenge ID:', default_val=current_val)
-            if not new_id:
-                self.update_menu_state()
-                return
-
-            CURRENT_MODE = selected_mode
-            config['score-mode']['scores'] = 'false'
-            config['score-mode']['challenge'] = 'false'
-            config['score-mode'][selected_mode] = 'true'
-
-            if selected_mode == 'challenge':
-                if 'challenge' not in config:
-                    config['challenge'] = {}
-                config['challenge']['challenge_id'] = new_id
-
+            if 'integration' not in config:
+                config['integration'] = {}
+            config['integration']['active'] = mode
             save_config()
+
+            # WoVP always uses manual send; VPinLeaders respects its own SEND_MODE
+            if mode == 'wovp' or SEND_MODE == 'manual':
+                _start_manual_send_listeners()
+            else:
+                _stop_manual_send_listeners()
+
+            # Fetch challenges when switching to WoVP (and api_key is present)
+            if mode == 'wovp' and _wovp_api_key:
+                _fetch_wovp_challenges()
+
+            _log('INFO', f'App mode switched to: {mode}')
             self.update_menu_state()
 
         def set_send_mode(self, mode):
             global SEND_MODE
             SEND_MODE = mode
 
-            if 'send-mode' not in config:
-                config['send-mode'] = {}
-            config['send-mode']['send_mode'] = mode
+            if 'vpinleaders' not in config:
+                config['vpinleaders'] = {}
+            config['vpinleaders']['send_mode'] = mode
             save_config()
 
-            if mode in ('manual', 'wovp'):
+            if mode == 'manual':
                 _start_manual_send_listeners()
             else:
                 _stop_manual_send_listeners()
 
+            self.update_menu_state()
+
+        def _populate_screen_actions(self):
+            """Rebuilds the screen radio list from the currently connected displays."""
+            # Remove any existing screen actions
+            for act in list(self.screen_action_group.actions()):
+                self.screen_action_group.removeAction(act)
+                self.screenshots_menu.removeAction(act)
+
+            screens = QApplication.instance().screens()
+            selected_idx = SCREENSHOT_SCREEN_ID if SCREENSHOT_SCREEN_ID is not None else 0
+
+            for idx, screen in enumerate(screens):
+                geom = screen.geometry()
+                name = screen.name() or f'Screen {idx}'
+                label = f'Screen {idx}  –  {name}  ({geom.width()}×{geom.height()})'
+                act = QAction(label, self.screenshots_menu)
+                act.setCheckable(True)
+                act.setChecked(idx == selected_idx)
+                act.triggered.connect(lambda checked, i=idx: self._select_screen(i))
+                self.screen_action_group.addAction(act)
+                self.screenshots_menu.addAction(act)
+
+        def _toggle_screenshot(self):
+            global SCREENSHOT_ENABLED
+            SCREENSHOT_ENABLED = self.act_screenshot_enable.isChecked()
+            if 'screenshot' not in config:
+                config['screenshot'] = {}
+            config['screenshot']['enable'] = 'true' if SCREENSHOT_ENABLED else 'false'
+            save_config()
+            self.update_menu_state()
+
+        def _select_screen(self, screen_idx):
+            global SCREENSHOT_SCREEN_ID
+            SCREENSHOT_SCREEN_ID = screen_idx
+            if 'screenshot' not in config:
+                config['screenshot'] = {}
+            config['screenshot']['screen_to_capture'] = str(screen_idx)
+            save_config()
+
+        def _on_challenges_ready(self, challenges):
+            """Rebuilds the WoVP Challenge submenu on the Qt main thread."""
+            self.wovp_challenges_menu.clear()
+            self._challenges_action_group = QActionGroup(self.wovp_challenges_menu)
+            self._challenges_action_group.setExclusive(True)
+
+            if not challenges:
+                empty = QAction('No active challenges found', self.wovp_challenges_menu)
+                empty.setEnabled(False)
+                self.wovp_challenges_menu.addAction(empty)
+            else:
+                for ch in challenges:
+                    ch_id = ch['id']
+                    ch_name = ch['name']
+                    act = QAction(ch_name, self.wovp_challenges_menu, checkable=True)
+                    act.setChecked(ch_id == _wovp_challenge_id)
+                    act.triggered.connect(
+                        lambda checked, cid=ch_id, cname=ch_name: self._select_challenge(cid, cname)
+                    )
+                    self._challenges_action_group.addAction(act)
+                    self.wovp_challenges_menu.addAction(act)
+
+            self.wovp_challenges_menu.addSeparator()
+            refresh_act = QAction('↺ Refresh Challenges', self.wovp_challenges_menu)
+            refresh_act.triggered.connect(lambda: _fetch_wovp_challenges())
+            self.wovp_challenges_menu.addAction(refresh_act)
+
+            self.update_menu_state()
+
+        def _select_challenge(self, challenge_id, challenge_name):
+            global _wovp_challenge_id, _wovp_challenge_name
+            _wovp_challenge_id = challenge_id
+            _wovp_challenge_name = challenge_name
+            _save_wovp_challenge(challenge_id, challenge_name)
             self.update_menu_state()
 
         def display_overlay(self, title, message, kind):
@@ -1328,16 +1820,35 @@ def _run_desktop_app():
         pixmap.fill(QColor('blue'))
         icon = QIcon(pixmap)
 
+    global _tray_ref
     tray = VPinScoreTray(icon)
+    _tray_ref = tray
     tray.show()
     _set_notification_sink(lambda title, message, kind: tray.notify_requested.emit(title, message, kind))
+
+    _log(
+        'INFO',
+        f'Startup: integration={APP_MODE} | send_mode={SEND_MODE} | '
+        f'keyboard={"on" if _keyboard_binding_enabled() else "off"} '
+        f'({MANUAL_SEND_KEYBOARD_BINDING or "none"}) | '
+        f'joystick={"on" if _joystick_binding_enabled() else "off"}',
+    )
 
     _log('INFO', 'Starting source thread: nvram')
     source_thread = threading.Thread(target=run_nvram_monitor, daemon=True)
     source_thread.start()
 
-    if SEND_MODE in ('manual', 'wovp'):
+    if APP_MODE == 'wovp' or SEND_MODE == 'manual':
+        _log('INFO', f'Manual send listeners required (app_mode={APP_MODE}, send_mode={SEND_MODE})')
         _start_manual_send_listeners()
+    else:
+        _log('INFO', 'Manual send listeners not started (automatic VPinLeaders mode)')
+
+    # WoVP: only validate and pre-fetch challenges when it is the active integration.
+    # No WoVP noise at startup when the user is in VPinLeaders mode.
+    if APP_MODE == 'wovp' and _wovp_api_key:
+        _validate_wovp_apikey()
+        _fetch_wovp_challenges()
 
     app._vpin_signal_timer = signal_timer
     return app.exec()
@@ -1346,8 +1857,8 @@ def _run_desktop_app():
 def _run_headless():
     _set_notification_sink(None)
     _install_headless_signal_handlers()
-    if SEND_MODE in ('manual', 'wovp'):
-        _log('WARN', f'{SEND_MODE} send mode is not supported in headless mode; scores will not be submitted automatically')
+    if APP_MODE == 'wovp' or SEND_MODE == 'manual':
+        _log('WARN', 'Manual send mode is not supported in headless mode; scores will not be submitted automatically')
     _log('INFO', 'Running in headless mode')
     run_nvram_monitor()
 
@@ -1360,14 +1871,10 @@ if __name__ == '__main__':
 
     load_config()
 
-    missing = [
-        k for k, v in [
-            ('api_key', API_KEY),
-            ('machine_id', MACHINE_ID),
-            ('nvram.base_dir', NVRAM_DIR),
-        ]
-        if not v or not v.strip()
-    ]
+    required = [('nvram.base_dir', NVRAM_DIR)]
+    if APP_MODE == 'vpinleaders':
+        required += [('api_key', API_KEY), ('machine_id', MACHINE_ID)]
+    missing = [k for k, v in required if not v or not v.strip()]
     if missing:
         _log('ERROR', f"Missing required config value(s): {', '.join(missing)}")
         sys.exit(1)
