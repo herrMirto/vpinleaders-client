@@ -737,43 +737,6 @@ def save_config():
     except Exception as e:
         _log('ERROR', f'Error saving config: {e}')
 
-
-def _migrate_config_to_new_format():
-    """
-    Rewrites the in-memory config object to use the new section/key layout so
-    that every subsequent save_config() call writes the canonical format, even
-    when the file was originally in the old layout.
-    """
-    # [integration]
-    if 'integration' not in config:
-        config['integration'] = {}
-    config['integration']['active'] = APP_MODE
-
-    # [vpinleaders]
-    if 'vpinleaders' not in config:
-        config['vpinleaders'] = {}
-    config['vpinleaders']['api_url'] = API_URL or CONFIG_WEBSITE_URL
-    config['vpinleaders']['api_key'] = API_KEY
-    config['vpinleaders']['machine_id'] = MACHINE_ID
-    config['vpinleaders']['send_mode'] = SEND_MODE
-
-    # [screenshot] — rename capture_screen → screen_to_capture, drop unused keys
-    if 'screenshot' in config:
-        if config.has_option('screenshot', 'capture_screen'):
-            old_val = config['screenshot'].get('capture_screen', '0')
-            config.remove_option('screenshot', 'capture_screen')
-            if not config.has_option('screenshot', 'screen_to_capture'):
-                config['screenshot']['screen_to_capture'] = old_val
-        for legacy_key in ('max_width', 'jpeg_quality'):
-            if config.has_option('screenshot', legacy_key):
-                config.remove_option('screenshot', legacy_key)
-
-    # Remove old top-level sections entirely
-    for old_section in ('credentials', 'send-mode', 'score-mode', 'challenge'):
-        if config.has_section(old_section):
-            config.remove_section(old_section)
-
-
 def get_input_string(title, prompt, default_val=''):
     try:
         from PyQt6.QtWidgets import QInputDialog

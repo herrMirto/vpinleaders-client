@@ -26,7 +26,7 @@ class WovpClient:
         try:
             self.api_key = self.config.get("wovp", "api_key")
         except (configparser.NoSectionError, configparser.NoOptionError) as e:
-            logger.warning(f"Configuração do WOVP incompleta no config.ini: {e}")
+            logger.warning(f"WOVP configuration incomplete in config.ini: {e}")
             self.api_key = ""
 
         self.headers = {
@@ -172,20 +172,20 @@ class WovpClient:
                     files={"file": file_stream},
                 )
         except IOError as e:
-            raise Exception(f"Erro ao ler o arquivo de screenshot {screenshot_path}: {e}")
+            raise Exception(f"Error reading screenshot file {screenshot_path}: {e}")
 
         if photo_resp.status_code != 200:
             raise Exception(
-                f"WOVP Upload falhou com código {photo_resp.status_code}: {photo_resp.text}"
+                f"WOVP Upload failed with code {photo_resp.status_code}: {photo_resp.text}"
             )
 
         photo_data = photo_resp.json().get("data", {})
         if photo_data.get("errors"):
-            raise Exception(f"WOVP retornou erros na imagem: {photo_data.get('errors')}")
+            raise Exception(f"WOVP returned errors for the image: {photo_data.get('errors')}")
 
         photo_temp_id = photo_data.get("photoTempId")
         if not photo_temp_id:
-            raise Exception("WOVP não retornou o photoTempId após o upload da imagem.")
+            raise Exception("WOVP did not return photoTempId after image upload.")
 
         # --- STEP 2: Submit Score ---
         payload = {
@@ -211,10 +211,10 @@ class WovpClient:
 
         if score_resp.status_code != 200:
             raise Exception(
-                f"WOVP Submit falhou com código {score_resp.status_code}: {score_resp.text}"
+                f"WOVP Submit failed with code {score_resp.status_code}: {score_resp.text}"
             )
 
         duration = int((time.time() - start_time) * 1000)
-        logger.info(f"WOVP: Score de {score} submetido com sucesso. Levou {duration}ms.")
+        logger.info(f"WOVP: Score of {score} submitted successfully. Took {duration}ms.")
 
         return score_resp.json()
