@@ -1,9 +1,6 @@
 {
   "_notes": [
-    "Derived from native NVRAM offsets.",
-    "This map focuses on current/last game score extraction.",
-    "Verify score encoding/scale with real NVRAM before production use.",
-    "Player score fields currently mirror top saved score slots until per-player RAM offsets are mapped."
+    "Derived from native NVRAM offsets."
   ],
   "_fileformat": 0.7,
   "_metadata": {
@@ -28,7 +25,21 @@
           "0x2102064"
         ]
       }
-    ]
+    ],
+    "current_player": {
+      "label": "Current Player",
+      "start": "0x620E2",
+      "encoding": "int",
+      "endian": "big",
+      "length": 2
+    },
+    "game_over": {
+      "_notes": "current_player == 0",
+      "label": "Game Over",
+      "start": "0x620E2",
+      "encoding": "bool",
+      "invert": true
+    }
   },
   "high_scores": [
     {

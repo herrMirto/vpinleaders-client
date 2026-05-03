@@ -4,7 +4,7 @@
   ],
   "_fileformat": 0.7,
   "_metadata": {
-    "version": 1,
+    "version": 2,
     "copyright": [
       "Copyright (C)2024 by Tom Collins <tom@tomlogic.com>",
       "Copyright (C) 2025 by Tom Collins <tom@scorbit.io>"
@@ -12,7 +12,8 @@
     "license": "GNU Lesser General Public License v3.0",
     "platform": "stern-sam",
     "roms": [
-      "st_162"
+      "st_162",
+      "st_162c"
     ]
   },
   "game_state": {
@@ -41,12 +42,7 @@
         "length": 4,
         "start": "0x21109F0"
       }
-    ],
-    "match_counter": {
-      "label": "Match Counter",
-      "encoding": "int",
-      "start": "0x21109DC"
-    }
+    ]
   },
   "high_scores": [
     {

@@ -5,13 +5,22 @@
   ],
   "_fileformat": 0.8,
   "_metadata": {
-    "version": 1,
+    "version": 2,
     "copyright": [
       "Copyright (C) 2025 by Tom Collins <tom@scorbit.io>"
     ],
     "license": "GNU Lesser General Public License v3.0",
     "platform": "whitestar",
     "roms": [
+      "simp300",
+      "simp300f",
+      "simp300i",
+      "simp300l",
+      "simp400",
+      "simp400f",
+      "simp400g",
+      "simp400i",
+      "simp400l",
       "simpprty",
       "simpprtg",
       "simpprtl",

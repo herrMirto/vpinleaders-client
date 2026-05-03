@@ -41,12 +41,7 @@
         "length": 4,
         "start": "0x21109F0"
       }
-    ],
-    "match_counter": {
-      "label": "Match Counter",
-      "encoding": "int",
-      "start": "0x21109DC"
-    }
+    ]
   },
   "high_scores": [
     {

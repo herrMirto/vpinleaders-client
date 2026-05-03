@@ -1,120 +1,294 @@
 {
-  "_notes": [
-    "Dedicated ACD map based on observed NVRAM offsets (little-endian int scores).",
-    "Player score block starts at 0x2110A24; match counter at 0x2110A1C."
-  ],
   "_fileformat": 0.7,
   "_metadata": {
-    "version": 1,
-    "copyright": [],
+    "version": 2,
     "license": "GNU Lesser General Public License v3.0",
     "platform": "stern-sam",
     "roms": [
       "acd_170h"
     ]
   },
-  "game_state": {
-    "scores": [
-      {
-        "label": "Player 1",
-        "encoding": "int",
-        "length": 4,
-        "start": "0x2110A24"
-      },
-      {
-        "label": "Player 2",
-        "encoding": "int",
-        "length": 4,
-        "start": "0x2110A28"
-      },
-      {
-        "label": "Player 3",
-        "encoding": "int",
-        "length": 4,
-        "start": "0x2110A2C"
-      },
-      {
-        "label": "Player 4",
-        "encoding": "int",
-        "length": 4,
-        "start": "0x2110A30"
-      }
-    ],
-    "match_counter": {
-      "label": "Match Counter",
-      "encoding": "int",
-      "start": "0x2110A1C"
-    }
-  },
   "high_scores": [
     {
       "label": "Grand Champion",
-      "short_label": "GC",
       "initials": {
+        "start": "0x021037FC",
         "encoding": "ch",
-        "length": 3,
-        "start": "0x21037FC"
+        "null": "terminate",
+        "length": 11
       },
       "score": {
+        "start": "0x02103814",
         "encoding": "int",
-        "length": 4,
-        "start": "0x2103814"
+        "length": 4
       }
     },
     {
-      "label": "High Score #1",
-      "short_label": "#1",
+      "label": "First Place",
       "initials": {
+        "start": "0x02103820",
         "encoding": "ch",
-        "length": 3,
-        "start": "0x2103820"
+        "null": "terminate",
+        "length": 11
       },
       "score": {
+        "start": "0x02103838",
         "encoding": "int",
-        "length": 4,
-        "start": "0x2103838"
+        "length": 4
       }
     },
     {
-      "label": "High Score #2",
-      "short_label": "#2",
+      "label": "Second Place",
       "initials": {
+        "start": "0x02103844",
         "encoding": "ch",
-        "length": 3,
-        "start": "0x2103844"
+        "null": "terminate",
+        "length": 11
       },
       "score": {
+        "start": "0x0210385C",
         "encoding": "int",
-        "length": 4,
-        "start": "0x210385C"
+        "length": 4
       }
     },
     {
-      "label": "High Score #3",
-      "short_label": "#3",
+      "label": "Third Place",
       "initials": {
+        "start": "0x02103868",
         "encoding": "ch",
-        "length": 3,
-        "start": "0x2103868"
+        "null": "terminate",
+        "length": 11
       },
       "score": {
+        "start": "0x02103880",
         "encoding": "int",
-        "length": 4,
-        "start": "0x2103880"
+        "length": 4
       }
     },
     {
-      "label": "High Score #4",
-      "short_label": "#4",
+      "label": "Fourth Place",
       "initials": {
+        "start": "0x0210388C",
         "encoding": "ch",
-        "length": 3,
-        "start": "0x210388C"
+        "null": "terminate",
+        "length": 11
       },
       "score": {
+        "start": "0x021038A4",
         "encoding": "int",
-        "length": 4,
-        "start": "0x21038A4"
+        "length": 4
+      }
+    }
+  ],
+  "mode_champions": [
+    {
+      "label": "Combo Champion",
+      "initials": {
+        "start": "0x021038B0",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "counter": {
+        "start": "0x021038C8",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Back In Black Champion",
+      "initials": {
+        "start": "0x021038D4",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x021038EC",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "For Those About To Rock Champion",
+      "initials": {
+        "start": "0x021038F8",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x02103910",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Hell Aint A Bad Place To Be Champion",
+      "initials": {
+        "start": "0x0210391C",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x02103934",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Hells Bells Champion",
+      "initials": {
+        "start": "0x02103940",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x02103958",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Highway To Hell Champion",
+      "initials": {
+        "start": "0x02103964",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x0210397C",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Let There Be Rock Champion",
+      "initials": {
+        "start": "0x02103988",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x021039A0",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Rock N Roll Train Champion",
+      "initials": {
+        "start": "0x021039AC",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x021039C4",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Thunderstruck Champion",
+      "initials": {
+        "start": "0x021039D0",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x021039E8",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "T.N.T. Champion",
+      "initials": {
+        "start": "0x021039F4",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x02103A0C",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "War Machine Champion",
+      "initials": {
+        "start": "0x02103A18",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x02103A30",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Whole Lotta Rosie Champion",
+      "initials": {
+        "start": "0x02103A3C",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x02103A54",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "You Shook Me All Night Long Champion",
+      "initials": {
+        "start": "0x02103A60",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x02103A78",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Song Jackpot Champion",
+      "initials": {
+        "start": "0x02103A84",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x02103A9C",
+        "encoding": "int",
+        "length": 4
+      }
+    },
+    {
+      "label": "Encore Champion",
+      "initials": {
+        "start": "0x02103ACC",
+        "encoding": "ch",
+        "null": "terminate",
+        "length": 11
+      },
+      "score": {
+        "start": "0x02103AE4",
+        "encoding": "int",
+        "length": 4
       }
     }
   ]

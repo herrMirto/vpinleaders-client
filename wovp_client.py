@@ -1,8 +1,11 @@
 import configparser
 import logging
+import os
+import re
 import requests
+import tempfile
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +13,11 @@ CLIENT_VERSION = "1.0"
 
 # Playing platform identifier for Visual Pinball X
 PLATFORM_VPX = 0
+
+
+def _preview(value, limit: int = 800) -> str:
+    text = str(value)
+    return text if len(text) <= limit else text[:limit] + "…"
 
 
 class WovpClient:
@@ -20,6 +28,7 @@ class WovpClient:
     SCORE_SUBMIT_URL = f"{BASE_URL}/scores/submit"
 
     def __init__(self, config_path: str = "config.ini"):
+        self.config_path = config_path
         self.config = configparser.ConfigParser()
         self.config.read(config_path)
 
@@ -199,6 +208,11 @@ class WovpClient:
                 "rom": rom,
             },
         }
+        logger.info(
+            "WOVP: submitting score payload "
+            f"challengeId={challenge_id} photoTempId={photo_temp_id} "
+            f"score={score} playingPlatform={playing_platform} rom={rom!r} vpx_file={vpx_file!r}"
+        )
 
         post_headers = self.headers.copy()
         post_headers["Content-Type"] = "application/json"
@@ -208,13 +222,157 @@ class WovpClient:
             headers=post_headers,
             json=payload,
         )
+        try:
+            score_json = score_resp.json()
+        except ValueError:
+            score_json = None
+        logger.info(
+            f"WOVP /scores/submit → HTTP {score_resp.status_code}; "
+            f"response={_preview(score_json if score_json is not None else score_resp.text)}"
+        )
 
         if score_resp.status_code != 200:
             raise Exception(
                 f"WOVP Submit failed with code {score_resp.status_code}: {score_resp.text}"
             )
 
+        if isinstance(score_json, dict):
+            data = score_json.get("data")
+            errors = score_json.get("errors")
+            if isinstance(data, dict):
+                errors = errors or data.get("errors")
+            success = score_json.get("success")
+            if success is False or errors:
+                raise Exception(f"WOVP Submit returned errors: {_preview(errors or score_json)}")
+
         duration = int((time.time() - start_time) * 1000)
         logger.info(f"WOVP: Score of {score} submitted successfully. Took {duration}ms.")
 
-        return score_resp.json()
+        return score_json if score_json is not None else {"raw": score_resp.text}
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Challenge Management & State
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def get_selected_challenge(self) -> Tuple[str, str]:
+        """
+        Returns the currently selected challenge (id, name).
+        Returns ('', '') if none is selected.
+        """
+        try:
+            challenge_id = self.config.get("wovp", "selected_challenge_id", fallback="").strip()
+            challenge_name = self.config.get("wovp", "selected_challenge_name", fallback="").strip()
+            return (challenge_id, challenge_name)
+        except Exception:
+            return ("", "")
+
+    def set_selected_challenge(self, challenge_id: str, challenge_name: str):
+        """
+        Persists the selected WOVP challenge to config.ini.
+        """
+        if "wovp" not in self.config:
+            self.config["wovp"] = {}
+        self.config["wovp"]["selected_challenge_id"] = challenge_id
+        self.config["wovp"]["selected_challenge_name"] = challenge_name
+
+        try:
+            with open(self.config_path, "w") as f:
+                self.config.write(f)
+            logger.info(f"WOVP: Saved selected challenge {challenge_id} ({challenge_name})")
+        except Exception as e:
+            logger.error(f"WOVP: Failed to save challenge selection: {e}")
+
+    def is_ready(self) -> bool:
+        """
+        True when WoVP is fully configured: api_key is present AND a challenge is selected.
+        """
+        challenge_id, _ = self.get_selected_challenge()
+        return bool(self.api_key) and bool(challenge_id)
+
+    @staticmethod
+    def table_matches_challenge(vpx_file: str, challenge_name: str) -> bool:
+        """
+        Returns True when the VPX filename and the WoVP challenge name share at least
+        one meaningful word, indicating the player is on the correct table.
+
+        Normalisation applied to both sides before comparison:
+          - Strip .vpx extension
+          - Remove version tokens (v1, v1.17, 1.17, etc.)
+          - Lowercase, strip punctuation
+          - Discard words shorter than 3 characters (articles, 'of', 'a', …)
+
+        Returns True (allow) when either string is empty or the check cannot be
+        performed — better to submit than to silently block on bad data.
+        """
+        if not vpx_file or not challenge_name:
+            return True
+
+        def _words(s: str) -> set:
+            s = os.path.splitext(s)[0]                         # drop .vpx
+            s = re.sub(r'\bv?\d+[\d.]*\b', ' ', s, flags=re.I)  # drop versions
+            s = re.sub(r'[^a-z0-9 ]', ' ', s.lower())          # alphanum only
+            return {w for w in s.split() if len(w) >= 3}
+
+        vpx_words = _words(vpx_file)
+        challenge_words = _words(challenge_name)
+
+        if not vpx_words or not challenge_words:
+            return True   # nothing useful to compare — allow
+
+        return bool(vpx_words & challenge_words)
+
+    def submit_score_with_screenshot(
+        self,
+        screenshot_image,  # PIL Image object
+        score: int,
+        rom: str,
+        vpx_file: str = "",
+        jpeg_quality: int = 75,
+    ) -> dict:
+        """
+        Convenience method: takes a PIL Image, saves it as a temp JPEG, and submits.
+        Handles cleanup automatically.
+
+        Args:
+            screenshot_image: PIL Image object to submit
+            score: The numeric score
+            rom: ROM name (e.g. "sman_261")
+            vpx_file: VPX filename (optional)
+            jpeg_quality: JPEG compression quality (1-100)
+
+        Returns: Response dict from submit()
+        Raises: Exception on failure
+        """
+        if not screenshot_image:
+            raise ValueError("Screenshot image required")
+
+        challenge_id, challenge_name = self.get_selected_challenge()
+        if not challenge_id:
+            raise ValueError("No challenge selected")
+
+        # Convert to RGB if necessary and save temp JPEG
+        wovp_sc = (
+            screenshot_image.convert("RGB")
+            if hasattr(screenshot_image, "mode") and screenshot_image.mode == "RGBA"
+            else screenshot_image
+        )
+
+        fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                wovp_sc.save(f, format="JPEG", quality=jpeg_quality, optimize=True)
+
+            return self.submit(
+                screenshot_path=tmp_path,
+                score=score,
+                rom=rom,
+                challenge_id=challenge_id,
+                vpx_file=vpx_file,
+                playing_platform=PLATFORM_VPX,
+            )
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass

@@ -83,6 +83,7 @@ function _findExport(name) {
       "libpinmame.dylib",
       "libpinmame.so",
       "pinmame.dll",
+      "pinmame64.dll",
       "libpinmame.dll"
     ];
     for (var mIdx = 0; mIdx < moduleNames.length; mIdx++) {

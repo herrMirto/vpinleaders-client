@@ -5,7 +5,7 @@
   ],
   "_fileformat": 0.8,
   "_metadata": {
-    "version": 4,
+    "version": 5,
     "copyright": [
       "Copyright (C) 2026 by Tom Collins <tom@scorbit.io>"
     ],
@@ -16,6 +16,7 @@
       "tmnt_103",
       "tmnt_104",
       "tmnt_104g",
+      "tmnt_200",
       "tmnt_a07"
     ]
   },
@@ -24,35 +25,20 @@
       {
         "label": "Player 1",
         "encoding": "bcd",
-        "offsets": [
-          "0x0020",
-          "0x0010",
-          "0x0011",
-          "0x0012",
-          "0x0013"
-        ]
+        "start": "0x0010",
+        "length": 4
       },
       {
         "label": "Player 2",
         "encoding": "bcd",
-        "offsets": [
-          "0x0021",
-          "0x0014",
-          "0x0015",
-          "0x0016",
-          "0x0017"
-        ]
+        "start": "0x0014",
+        "length": 4
       },
       {
         "label": "Player 3",
         "encoding": "bcd",
-        "offsets": [
-          "0x0022",
-          "0x0018",
-          "0x0019",
-          "0x001A",
-          "0x001B"
-        ]
+        "start": "0x0018",
+        "length": 4
       },
       {
         "label": "Player 4",
@@ -120,13 +106,8 @@
       },
       "score": {
         "encoding": "bcd",
-        "offsets": [
-          "0x1DB8",
-          "0x1DA0",
-          "0x1DA1",
-          "0x1DA2",
-          "0x1DA3"
-        ]
+        "start": "0x1DA0",
+        "length": 4
       }
     },
     {
@@ -139,13 +120,8 @@
       },
       "score": {
         "encoding": "bcd",
-        "offsets": [
-          "0x1DB9",
-          "0x1DA4",
-          "0x1DA5",
-          "0x1DA6",
-          "0x1DA7"
-        ]
+        "start": "0x1DA4",
+        "length": 4
       }
     },
     {
@@ -158,13 +134,8 @@
       },
       "score": {
         "encoding": "bcd",
-        "offsets": [
-          "0x1DBA",
-          "0x1DA8",
-          "0x1DA9",
-          "0x1DAA",
-          "0x1DAB"
-        ]
+        "start": "0x1DA8",
+        "length": 4
       }
     },
     {
@@ -177,13 +148,8 @@
       },
       "score": {
         "encoding": "bcd",
-        "offsets": [
-          "0x1DBB",
-          "0x1DAC",
-          "0x1DAD",
-          "0x1DAE",
-          "0x1DAF"
-        ]
+        "start": "0x1DAC",
+        "length": 4
       }
     },
     {
@@ -196,13 +162,8 @@
       },
       "score": {
         "encoding": "bcd",
-        "offsets": [
-          "0x1DBC",
-          "0x1DB0",
-          "0x1DB1",
-          "0x1DB2",
-          "0x1DB3"
-        ]
+        "start": "0x1DB0",
+        "length": 4
       }
     },
     {
@@ -215,13 +176,8 @@
       },
       "score": {
         "encoding": "bcd",
-        "offsets": [
-          "0x1DBD",
-          "0x1DB4",
-          "0x1DB5",
-          "0x1DB6",
-          "0x1DB7"
-        ]
+        "start": "0x1DB4",
+        "length": 4
       }
     }
   ]

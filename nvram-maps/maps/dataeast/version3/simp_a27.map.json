@@ -88,7 +88,7 @@
   },
   "high_scores": [
     {
-      "label": "First",
+      "label": "The Best Dude",
       "short_label": "#1",
       "initials": {
         "start": "0x1DCC",
@@ -102,7 +102,7 @@
       }
     },
     {
-      "label": "Second",
+      "label": "Under-Achievers #2",
       "short_label": "#2",
       "initials": {
         "start": "0x1DCF",
@@ -116,7 +116,7 @@
       }
     },
     {
-      "label": "Third",
+      "label": "Under-Achievers #3",
       "short_label": "#3",
       "initials": {
         "start": "0x1DD2",
@@ -130,7 +130,7 @@
       }
     },
     {
-      "label": "Fourth",
+      "label": "Under-Achievers #4",
       "short_label": "#4",
       "initials": {
         "start": "0x1DD5",
@@ -144,7 +144,7 @@
       }
     },
     {
-      "label": "Fifth",
+      "label": "Under-Achievers #5",
       "short_label": "#5",
       "initials": {
         "start": "0x1DD8",
@@ -158,7 +158,7 @@
       }
     },
     {
-      "label": "Sixth",
+      "label": "Under-Achievers #6",
       "short_label": "#6",
       "initials": {
         "start": "0x1DDB",

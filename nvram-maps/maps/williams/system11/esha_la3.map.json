@@ -9,7 +9,7 @@
   ],
   "_fileformat": 0.8,
   "_metadata": {
-    "version": 4,
+    "version": 5,
     "copyright": [
       "Copyright (C) 2024 by Francis De Brabandere <francisdb@gmail.com>",
       "Copyright (C) 2025 by Tom Collins <tom@scorbit.io>"
@@ -19,7 +19,8 @@
     "roms": [
       "esha_la1",
       "esha_la3",
-      "esha_l4c"
+      "esha_l4c",
+      "esha_pr4"
     ]
   },
   "game_state": {

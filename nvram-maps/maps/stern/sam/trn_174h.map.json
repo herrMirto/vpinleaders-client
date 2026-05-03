@@ -1,125 +1,82 @@
 {
-  "_notes": [
-    "Native NVRAM mapping for TRON (Stern SAM)."
-  ],
   "_fileformat": 0.7,
   "_metadata": {
-    "version": 1,
+    "version": 2,
+    "license": "GNU Lesser General Public License v3.0",
     "platform": "stern-sam",
     "roms": [
-      "trn_170",
-      "trn_174",
-      "trn_17402",
       "trn_174h"
     ]
-  },
-  "game_state": {
-    "scores": [
-      {
-        "label": "Player 1",
-        "encoding": "int",
-        "length": 4,
-        "start": "0x21109e4"
-      },
-      {
-        "label": "Player 2",
-        "encoding": "int",
-        "length": 4,
-        "start": "0x21109e8"
-      },
-      {
-        "label": "Player 3",
-        "encoding": "int",
-        "length": 4,
-        "start": "0x21109ec"
-      },
-      {
-        "label": "Player 4",
-        "encoding": "int",
-        "length": 4,
-        "start": "0x21109f0"
-      }
-    ],
-    "match_counter": {
-      "label": "Match Counter",
-      "encoding": "int",
-      "start": "0x21109DC"
-    }
   },
   "high_scores": [
     {
       "label": "Grand Champion",
-      "short_label": "GC",
       "initials": {
+        "start": "0x02102BD8",
         "encoding": "ch",
         "null": "terminate",
-        "length": 11,
-        "start": "0x2102bd8"
+        "length": 11
       },
       "score": {
+        "start": "0x02102BF0",
         "encoding": "int",
-        "length": 4,
-        "start": "0x2102bf0"
+        "length": 4
       }
     },
     {
-      "label": "High Score #1",
-      "short_label": "#1",
+      "label": "First Place",
       "initials": {
+        "start": "0x02102BF8",
         "encoding": "ch",
         "null": "terminate",
-        "length": 11,
-        "start": "0x2102bf8"
+        "length": 11
       },
       "score": {
+        "start": "0x02102C10",
         "encoding": "int",
-        "length": 4,
-        "start": "0x2102c10"
+        "length": 4
       }
     },
     {
-      "label": "High Score #2",
-      "short_label": "#2",
+      "label": "Second Place",
       "initials": {
+        "start": "0x02102C18",
         "encoding": "ch",
         "null": "terminate",
-        "length": 11,
-        "start": "0x2102c18"
+        "length": 11
       },
       "score": {
+        "start": "0x02102C30",
         "encoding": "int",
-        "length": 4,
-        "start": "0x2102c30"
+        "length": 4
       }
     },
     {
-      "label": "High Score #3",
-      "short_label": "#3",
+      "label": "Third Place",
       "initials": {
+        "start": "0x02102C38",
         "encoding": "ch",
         "null": "terminate",
-        "length": 11,
-        "start": "0x2102c38"
+        "length": 11
       },
       "score": {
+        "start": "0x02102C50",
         "encoding": "int",
-        "length": 4,
-        "start": "0x2102c50"
+        "length": 4
       }
     },
     {
-      "label": "High Score #4",
-      "short_label": "#4",
+      "label": "Fourth Place",
       "initials": {
+        "start": "0x02102C58",
         "encoding": "ch",
         "null": "terminate",
-        "length": 11,
-        "start": "0x2102c58"
+        "length": 11
       },
       "score": {
+        "start": "0x02102C70",
         "encoding": "int",
-        "length": 4,
-        "start": "0x2102c70"
+        "length": 4
       }
     }
   ]
