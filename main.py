@@ -1524,21 +1524,37 @@ def preload_tray_data():
 
 
 def _refresh_wovp_challenges_bg():
-    """Refreshes WOVP challenge cache without rebuilding the live macOS menu."""
+    """Refresh WoVP challenges in the background and hand UI updates to Qt."""
     def _run():
         challenges = _load_wovp_challenges_sync()
+        global _preloaded_wovp_challenges
+        _preloaded_wovp_challenges = challenges
+        tray = _tray_ref
+        if tray is not None:
+            try:
+                tray.wovp_challenges_loaded.emit(challenges)
+            except Exception as e:
+                _log('WARN', f'WoVP menu refresh signal failed: {e}')
         if challenges:
-            show_notification('WoVP', f'Refreshed {len(challenges)} challenge(s). Restart to update the menu.')
+            show_notification('WoVP', f'Refreshed {len(challenges)} challenge(s).')
 
     threading.Thread(target=_run, daemon=True).start()
 
 
 def _refresh_iscored_games_bg():
-    """Refreshes iScored game cache without rebuilding the live macOS menu."""
+    """Refresh iScored games in the background and hand UI updates to Qt."""
     def _run():
         games = _load_iscored_games_sync()
+        global _preloaded_iscored_games
+        _preloaded_iscored_games = games
+        tray = _tray_ref
+        if tray is not None:
+            try:
+                tray.iscored_games_loaded.emit(games)
+            except Exception as e:
+                _log('WARN', f'iScored menu refresh signal failed: {e}')
         if games:
-            show_notification('iScored', f'Refreshed {len(games)} game(s). Restart to update the menu.')
+            show_notification('iScored', f'Refreshed {len(games)} game(s).')
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -1551,10 +1567,16 @@ def _run_desktop_app():
 
     class VPinScoreTray(QSystemTrayIcon):
         notify_requested = pyqtSignal(str, str, str)
+        menu_update_requested = pyqtSignal()
+        wovp_challenges_loaded = pyqtSignal(object)
+        iscored_games_loaded = pyqtSignal(object)
 
         def __init__(self, icon, parent=None):
             super().__init__(icon, parent)
             self.notify_requested.connect(self.display_overlay)
+            self.menu_update_requested.connect(self._schedule_menu_update)
+            self.wovp_challenges_loaded.connect(self._apply_wovp_challenges)
+            self.iscored_games_loaded.connect(self._apply_iscored_games)
 
             self.menu = QMenu(parent)
 
@@ -1584,23 +1606,19 @@ def _run_desktop_app():
             self.wovp_menu.addAction(self.act_wovp_active)
             self.wovp_menu.addSeparator()
 
-            # Fixed label: WoVP always fires on manual send — not user-configurable
             wovp_mode_label = QAction('Manual Send', self.wovp_menu)
             wovp_mode_label.setEnabled(False)
             self.wovp_menu.addAction(wovp_mode_label)
 
             self.wovp_menu.addSeparator()
 
-            # Challenges submenu: built once from data preloaded before the tray
-            # exists. Live macOS menu mutation is fragile and can SIGTRAP.
             self.wovp_challenges_menu = QMenu('Challenges', self.wovp_menu)
-            self._challenges_action_group = None
             self._rebuild_challenges_menu(_preloaded_wovp_challenges)
             self.wovp_menu.addMenu(self.wovp_challenges_menu)
 
             self.menu.addMenu(self.wovp_menu)
 
-            # ── iScored submenu ───────────────────────────────────────────
+            # ── iScored submenu ────────────────────────────────────────
             self.iscored_menu = QMenu('iScored', self.menu)
 
             self.act_iscored_active = QAction('Activate iScored', self.iscored_menu)
@@ -1614,9 +1632,7 @@ def _run_desktop_app():
 
             self.iscored_menu.addSeparator()
 
-            # Games submenu: built once from data preloaded before the tray exists.
             self.iscored_games_menu = QMenu('Games', self.iscored_menu)
-            self._games_action_group = None
             self._rebuild_games_menu(_preloaded_iscored_games)
             self.iscored_menu.addMenu(self.iscored_games_menu)
 
@@ -1625,14 +1641,11 @@ def _run_desktop_app():
             # ── Screenshots submenu ────────────────────────────────────
             self.screenshots_menu = QMenu('Screenshots', self.menu)
 
-            # Enable/Disable toggle — grayed out in WoVP (screenshot is mandatory there)
             self.act_screenshot_enable = QAction('Toggle Screenshots', self.screenshots_menu)
             self.act_screenshot_enable.triggered.connect(self._toggle_screenshot)
             self.screenshots_menu.addAction(self.act_screenshot_enable)
-
             self.screenshots_menu.addSeparator()
 
-            # One command per connected screen — no checkable/radio native menu state.
             self.screen_actions = []
             self._populate_screen_actions()
 
@@ -1709,9 +1722,10 @@ def _run_desktop_app():
             self.setToolTip(tooltip)
 
         def _defer_menu_update(self):
-            # Keep tray clicks side-effect only. Updating QAction text/enabled state
-            # while the native menu is being dispatched has caused macOS trace traps.
-            pass
+            self.menu_update_requested.emit()
+
+        def _schedule_menu_update(self):
+            QTimer.singleShot(150, self.update_menu_state)
 
         def set_app_mode(self, mode):
             global APP_MODE
@@ -1783,9 +1797,18 @@ def _run_desktop_app():
                 config['screenshot'] = {}
             config['screenshot']['screen_to_capture'] = str(screen_idx)
             save_config()
+            QTimer.singleShot(150, self._populate_screen_actions)
+            self._defer_menu_update()
+
+        def _apply_wovp_challenges(self, challenges):
+            self._rebuild_challenges_menu(challenges)
+            self._defer_menu_update()
+
+        def _apply_iscored_games(self, games):
+            self._rebuild_games_menu(games)
+            self._defer_menu_update()
 
         def _rebuild_games_menu(self, games):
-            """Mirror of _rebuild_challenges_menu. Info-only items (disabled QActions)."""
             self.iscored_games_menu.clear()
 
             if not games:
@@ -1801,17 +1824,17 @@ def _run_desktop_app():
                     if g.get('hidden'):
                         flags.append('hidden')
                     flag_str = f"  [{', '.join(flags)}]" if flags else ''
-                    room_suffix = f"  —  {g.get('room_name')}" if multi_room else ''
+                    room_suffix = f"  -  {g.get('room_name')}" if multi_room else ''
                     label = (
-                        f"{g.get('name') or '(unnamed)'}  —  ID {g.get('id')}"
+                        f"{g.get('name') or '(unnamed)'}  -  ID {g.get('id')}"
                         f"{flag_str}{room_suffix}"
                     )
                     item = QAction(label, self.iscored_games_menu)
-                    item.setEnabled(False)         # info-only
+                    item.setEnabled(False)
                     self.iscored_games_menu.addAction(item)
 
             self.iscored_games_menu.addSeparator()
-            refresh_act = QAction('↺ Refresh Games', self.iscored_games_menu)
+            refresh_act = QAction('Refresh Games', self.iscored_games_menu)
             refresh_act.triggered.connect(lambda: _refresh_iscored_games_bg())
             self.iscored_games_menu.addAction(refresh_act)
 
@@ -1839,7 +1862,7 @@ def _run_desktop_app():
                     self.wovp_challenges_menu.addAction(act)
 
             self.wovp_challenges_menu.addSeparator()
-            refresh_act = QAction('↺ Refresh Challenges', self.wovp_challenges_menu)
+            refresh_act = QAction('Refresh Challenges', self.wovp_challenges_menu)
             refresh_act.triggered.connect(lambda: _refresh_wovp_challenges_bg())
             self.wovp_challenges_menu.addAction(refresh_act)
 
@@ -1847,8 +1870,9 @@ def _run_desktop_app():
             from wovp_client import WovpClient
             wovp = WovpClient(CONFIG_PATH)
             wovp.set_selected_challenge(challenge_id, challenge_name)
-            # Avoid rebuilding submenus while NSMenu is still dispatching the click.
             self._refresh_tooltip_only()
+            QTimer.singleShot(150, lambda: self._rebuild_challenges_menu(_preloaded_wovp_challenges))
+            self._defer_menu_update()
 
         def _refresh_tooltip_only(self):
             """Lightweight tooltip refresh that avoids touching submenu structure."""
