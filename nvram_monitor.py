@@ -547,6 +547,39 @@ class NVRAMMonitor:
             'vpinball_gl64.exe',
         }
 
+    def current_score_snapshot(self) -> Optional[dict]:
+        """
+        Return the monitor's best current score estimate for manual submission.
+
+        The polling loop still owns game detection, but callers can ask for the
+        latest parsed state only when a user triggers a send. This keeps live
+        score values out of the UI/log callback path.
+        """
+        rom = self.active_rom
+        if not rom:
+            return None
+
+        st = self._state.get(rom)
+        if st is None:
+            return None
+        if not st.active:
+            return None
+
+        score = max(st.session_best, st.last_best, max(st.last_scores, default=0))
+        if score <= 0:
+            return None
+
+        vpx_file = ''
+        if self.last_detected_table_path:
+            vpx_file = os.path.basename(self.last_detected_table_path)
+
+        return {
+            'rom': rom,
+            'score': score,
+            'vpx_file': vpx_file,
+            'active': bool(st.active),
+        }
+
     @staticmethod
     def _looks_nonplay_score_pattern(scores: Tuple[int, ...]) -> bool:
         if not scores:

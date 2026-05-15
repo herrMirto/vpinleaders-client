@@ -211,7 +211,7 @@ class WovpClient:
         logger.info(
             "WOVP: submitting score payload "
             f"challengeId={challenge_id} photoTempId={photo_temp_id} "
-            f"score={score} playingPlatform={playing_platform} rom={rom!r} vpx_file={vpx_file!r}"
+            f"playingPlatform={playing_platform} rom={rom!r} vpx_file={vpx_file!r}"
         )
 
         post_headers = self.headers.copy()
@@ -226,10 +226,7 @@ class WovpClient:
             score_json = score_resp.json()
         except ValueError:
             score_json = None
-        logger.info(
-            f"WOVP /scores/submit → HTTP {score_resp.status_code}; "
-            f"response={_preview(score_json if score_json is not None else score_resp.text)}"
-        )
+        logger.info(f"WOVP /scores/submit → HTTP {score_resp.status_code}")
 
         if score_resp.status_code != 200:
             raise Exception(
@@ -246,7 +243,7 @@ class WovpClient:
                 raise Exception(f"WOVP Submit returned errors: {_preview(errors or score_json)}")
 
         duration = int((time.time() - start_time) * 1000)
-        logger.info(f"WOVP: Score of {score} submitted successfully. Took {duration}ms.")
+        logger.info(f"WOVP: score submitted successfully. Took {duration}ms.")
 
         return score_json if score_json is not None else {"raw": score_resp.text}
 

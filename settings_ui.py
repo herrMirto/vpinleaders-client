@@ -35,6 +35,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -709,9 +710,35 @@ class SettingsDialog(QDialog):
     def _build_integrations_tab(self) -> None:
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setSpacing(10)
+
+        def style_integration_box(box: QGroupBox) -> None:
+            box.setStyleSheet(
+                """
+                QGroupBox {
+                    background-color: #e8e8e8;
+                    border: 1px solid #c8c8c8;
+                    border-radius: 6px;
+                    margin-top: 10px;
+                    padding: 10px 8px 8px 8px;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 4px;
+                }
+                """
+            )
+
+        def add_separator() -> None:
+            line = QFrame()
+            line.setFrameShape(QFrame.Shape.HLine)
+            line.setFrameShadow(QFrame.Shadow.Sunken)
+            layout.addWidget(line)
 
         # VPinLeaders
         vpin_box = QGroupBox("VPinLeaders")
+        style_integration_box(vpin_box)
         vpin_form = QFormLayout(vpin_box)
         self.cb_vpin = QCheckBox("Enable VPinLeaders")
         vpin_form.addRow(self.cb_vpin)
@@ -724,9 +751,11 @@ class SettingsDialog(QDialog):
         self.vpin_register_btn.clicked.connect(self._register_vpinleaders)
         vpin_form.addRow(self.vpin_register_btn)
         layout.addWidget(vpin_box)
+        add_separator()
 
         # WoVP
         wovp_box = QGroupBox("WoVP")
+        style_integration_box(wovp_box)
         wovp_form = QFormLayout(wovp_box)
         self.cb_wovp = QCheckBox("Enable WoVP")
         wovp_form.addRow(self.cb_wovp)
@@ -734,9 +763,11 @@ class SettingsDialog(QDialog):
         self.wovp_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         wovp_form.addRow("API key:", self.wovp_api_key)
         layout.addWidget(wovp_box)
+        add_separator()
 
         # iScored
         isc_box = QGroupBox("iScored")
+        style_integration_box(isc_box)
         isc_form = QFormLayout(isc_box)
         self.cb_iscored = QCheckBox("Enable iScored")
         isc_form.addRow(self.cb_iscored)
@@ -818,6 +849,14 @@ class SettingsDialog(QDialog):
 
         self.nvram_edit.setText(cp.get("nvram", "base_dir", fallback=""))
         self.log_edit.setText(cp.get("logging", "file", fallback="~/.vpinleaders/logs/vpinleaders.log"))
+        self._update_vpinleaders_registration_action()
+
+    def _update_vpinleaders_registration_action(self) -> None:
+        is_registered = bool(
+            self.vpin_machine_id.text().strip()
+            and self.vpin_api_key.text().strip()
+        )
+        self.vpin_register_btn.setVisible(not is_registered)
 
     def _on_save(self) -> None:
         cp = _read_config(self.config_path)
@@ -872,6 +911,7 @@ class SettingsDialog(QDialog):
         self.cb_vpin.setChecked(_truthy(cp.get("vpinleaders", "enable", fallback="true")))
         self.vpin_machine_id.setText(cp.get("vpinleaders", "machine_id", fallback=""))
         self.vpin_api_key.setText(cp.get("vpinleaders", "api_key", fallback=""))
+        self._update_vpinleaders_registration_action()
 
 
 class IntegrationSetupWizard(QWizard):

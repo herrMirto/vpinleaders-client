@@ -506,7 +506,7 @@ class IScoredClient:
                         if existing_score > score:
                             return {
                                 "success": True,
-                                "message": f"Existing score {existing_score:,} is higher; skipping.",
+                                "message": "Existing score is higher; skipping.",
                             }
                     except (ValueError, TypeError):
                         pass
@@ -514,7 +514,7 @@ class IScoredClient:
         room_name = match_room.get("roomName") or ""
 
         logger.info(
-            f"iScored: submitting '{self.player_name}' [{score}] to game '{match_game['name']}' "
+            f"iScored: submitting '{self.player_name}' to game '{match_game['name']}' "
             f"(ID {match_game.get('id')}) in room '{room_name}'"
         )
 
@@ -522,7 +522,7 @@ class IScoredClient:
         post_url = self._api_url(match_room, match_room["gameroom"], game_ref, "submitScore")
         params = {"playerName": self.player_name, "score": score}
         logger.info(
-            f"iScored: POST {post_url}?playerName={self.player_name!r}&score={score}"
+            f"iScored: POST {post_url}?playerName={self.player_name!r}&score=<hidden>"
         )
         resp = requests.post(post_url, data=params, timeout=10)
         logger.info(f"iScored: ← HTTP {resp.status_code} ({len(resp.content)} bytes) from submitScore")

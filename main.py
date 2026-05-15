@@ -449,8 +449,6 @@ CONFIG_PATH = _config_path()
 
 # Deduplicate game-end events
 last_game_end = {}
-_last_logged_scores = {}
-
 # Reference to the running NVRAMMonitor (set in run_nvram_monitor)
 _nvram_monitor_ref = None
 
@@ -554,6 +552,23 @@ def _set_last_score(rom_name, score, vpx_file: str = ''):
 def _get_last_score():
     with _last_score_lock:
         return _last_score_rom, _last_score_value, _last_score_vpx_file
+
+
+def _get_manual_score_snapshot():
+    monitor = _nvram_monitor_ref
+    if monitor is not None:
+        try:
+            snap = monitor.current_score_snapshot()
+        except Exception as e:
+            _log('WARN', f'Could not read current score snapshot: {e}')
+            snap = None
+        if snap:
+            rom = snap.get('rom')
+            score = _normalize_score(snap.get('score'))
+            vpx_file = str(snap.get('vpx_file') or '')
+            if rom and score > 0:
+                return rom, score, vpx_file
+    return _get_last_score()
 
 
 def _set_notification_sink(sink):
@@ -801,7 +816,7 @@ def send_score(table_name, score, screenshot_image=None, vpx_file: str = ''):
         show_notification('VPinLeaders Send Failed', 'VPinLeaders is not configured.', kind='error')
         return
 
-    _log('INFO', f'VPinLeaders: sending score: {table_name} - {clean_score}')
+    _log('INFO', f'VPinLeaders: sending score for {table_name}')
 
     screenshot = screenshot_image
 
@@ -842,11 +857,11 @@ def send_score(table_name, score, screenshot_image=None, vpx_file: str = ''):
 
         r.raise_for_status()
         result = r.json()
-        _log('INFO', f'Response: status={r.status_code}, result={result}')
+        _log('INFO', f'VPinLeaders response: HTTP {r.status_code}')
 
         if result.get('success'):
             table_display = result.get('tableName', table_name)
-            _log('INFO', f'Score submitted successfully: {table_display} - {clean_score:,}')
+            _log('INFO', f'Score submitted successfully: {table_display}')
             show_notification(table_display, clean_score)
         else:
             error_msg = str(result.get('error', 'Unknown'))
@@ -927,7 +942,7 @@ def send_wovp_score(table_name, score, screenshot_image, vpx_file: str = ''):
             jpeg_quality=SCREENSHOT_JPEG_QUALITY,
         )
 
-        _log('INFO', f'WoVP: score submitted — {table_name} {clean_score:,} → "{challenge_name}"')
+        _log('INFO', f'WoVP: score submitted — {table_name} → "{challenge_name}"')
         show_notification(f'WoVP: {table_name}', clean_score)
 
     except Exception as e:
@@ -970,7 +985,7 @@ def send_iscored_score(table_name, score, vpx_file: str = '', screenshot_image=N
 
         msg = result.get('message', '')
         if result.get('success'):
-            _log('INFO', f'iScored: score submitted — {table_name} {clean_score:,} ({msg})')
+            _log('INFO', f'iScored: score submitted — {table_name} ({msg})')
             show_notification(f'iScored: {table_name}', clean_score)
         else:
             _log('ERROR', f'iScored submission failed: {msg}')
@@ -990,25 +1005,9 @@ def handle_game_start_event(rom_name):
 
 
 def handle_current_scores_event(rom_name, scores, current_ball=None):
-    if not scores:
-        return
-    normalized = [_normalize_score(s) for s in scores]
-    best = 0
-    for v in normalized:
-        if v > best:
-            best = v
-    if best > 0:
-        _set_last_score(rom_name, best)
-
-    key = tuple(normalized)
-    prev = _last_logged_scores.get(rom_name)
-    if key != prev:
-        _last_logged_scores[rom_name] = key
-        parts = [f'P{i + 1}:{score:,}' for i, score in enumerate(normalized)]
-        if current_ball is not None:
-            _log('INFO', f'Live scores {rom_name} (ball={current_ball}): {" | ".join(parts)}')
-        else:
-            _log('INFO', f'Live scores {rom_name}: {" | ".join(parts)}')
+    # The monitor keeps live score state internally for game detection and
+    # manual-send snapshots. Avoid logging or publishing every polled score.
+    return
 
 
 def handle_game_end_event(rom_name, scores, reason='', game_duration=None):
@@ -1036,7 +1035,7 @@ def handle_game_end_event(rom_name, scores, reason='', game_duration=None):
         return
 
     _log('INFO', f'Game over detected: {rom_name} (reason={reason}, duration={game_duration})')
-    _log('INFO', f'Final score selected: {rom_name} - {best_score:,}')
+    _log('INFO', f'Final score selected for {rom_name}')
 
     # Snapshot the VPX filename NOW, while the right table is still the active process.
     # Manual sends may arrive seconds or minutes later when a different table is loaded.
@@ -1045,7 +1044,7 @@ def handle_game_end_event(rom_name, scores, reason='', game_duration=None):
         vpx_file = os.path.basename(_nvram_monitor_ref.last_detected_table_path)
     _set_last_score(rom_name, best_score, vpx_file)
 
-    _log('INFO', f'Score stored for manual send: {rom_name} - {best_score:,}')
+    _log('INFO', f'Score stored for manual send: {rom_name}')
 
 
 def handle_status_message_event(title, message):
@@ -1098,7 +1097,7 @@ _joybutton_listener_combo = ()
 def _trigger_manual_send(source):
     global _manual_send_inflight, _manual_send_last_signature, _manual_send_last_ts
 
-    rom, score, vpx_file = _get_last_score()
+    rom, score, vpx_file = _get_manual_score_snapshot()
     if rom is None or score is None or score <= 0:
         _log('WARN', f'{source} pressed but no score available to send')
         show_notification('No Score', 'No score available to send')
@@ -1117,7 +1116,7 @@ def _trigger_manual_send(source):
         _manual_send_last_signature = signature
         _manual_send_last_ts = now
 
-    _log('INFO', f'{source} triggered: sending {rom} - {score:,} (vpx={vpx_file or "unknown"})')
+    _log('INFO', f'{source} triggered: sending {rom} (vpx={vpx_file or "unknown"})')
 
     def _runner():
         global _manual_send_inflight
