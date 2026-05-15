@@ -1433,8 +1433,9 @@ class NVRAMMonitor:
                 continue
             comm = parts[1].strip()
             cmdline = parts[2].strip()
-            low = f'{comm} {cmdline}'.lower()
-            if 'vpinball' not in low:
+            exe = self._extract_exec_from_cmdline(cmdline) or comm
+            base = os.path.basename(exe.strip().strip('"').strip("'")).lower()
+            if base != 'vpinballx_bgfx':
                 continue
             procs.append((pid, comm, cmdline))
         if procs:

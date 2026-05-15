@@ -647,13 +647,13 @@ def load_config():
     # ── VPinLeaders ───────────────────────────────────────────────────────
     if 'vpinleaders' in config:
         VPINLEADERS_ENABLED = _truthy(config['vpinleaders'].get('enable', 'false'))
-        API_URL = config['vpinleaders'].get('api_url', '').strip()
+        API_URL = config['vpinleaders'].get('api_url', CONFIG_WEBSITE_URL).strip() or CONFIG_WEBSITE_URL
         API_KEY = config['vpinleaders'].get('api_key', '').strip()
         MACHINE_ID = config['vpinleaders'].get('machine_id', '').strip()
     else:
         VPINLEADERS_ENABLED = False
         if 'credentials' in config:
-            API_URL = config['credentials'].get('api_url', '').strip()
+            API_URL = config['credentials'].get('api_url', CONFIG_WEBSITE_URL).strip() or CONFIG_WEBSITE_URL
             API_KEY = config['credentials'].get('api_key', '').strip()
             MACHINE_ID = config['credentials'].get('machine_id', '').strip()
 
@@ -954,10 +954,6 @@ def send_iscored_score(table_name, score, vpx_file: str = '', screenshot_image=N
         if not iscored.player_name:
             _log('ERROR', 'iScored: player_name is not configured')
             show_notification('iScored Send Failed', 'iScored player_name is not configured.', kind='error')
-            return
-        if not iscored.room_urls:
-            _log('ERROR', 'iScored: no room URLs configured')
-            show_notification('iScored Send Failed', 'No iScored room URLs configured.', kind='error')
             return
 
         effective_vpx = vpx_file or (
@@ -1439,6 +1435,90 @@ class _MacCarbonHotkeyListener:
         self._carbon = None
 
 
+def _parse_macos_appkit_hotkey(binding: str):
+    tokens = [part.strip().lower() for part in str(binding or '').split('+') if part.strip()]
+    key = ''
+    required = 0
+
+    # NSEventModifierFlag* values.
+    shift = 1 << 17
+    control = 1 << 18
+    option = 1 << 19
+    command = 1 << 20
+
+    for token in tokens:
+        if token in ('cmd', 'command', 'meta', 'super', 'win', 'windows'):
+            required |= command
+        elif token in ('shift',):
+            required |= shift
+        elif token in ('alt', 'option'):
+            required |= option
+        elif token in ('ctrl', 'control'):
+            required |= control
+        else:
+            key = token.lower()
+
+    if not key:
+        raise ValueError(f'unsupported macOS hotkey binding: {binding}')
+    return key, required
+
+
+class _MacAppKitHotkeyListener:
+    def __init__(self, binding: str, callback):
+        self.binding = binding
+        self._callback = callback
+        self._global_monitor = None
+        self._local_monitor = None
+        self._key = ''
+        self._required_modifiers = 0
+
+    def start(self):
+        import AppKit
+
+        self._key, self._required_modifiers = _parse_macos_appkit_hotkey(self.binding)
+        mask = AppKit.NSEventMaskKeyDown
+        self._global_monitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+            mask,
+            self._handle_event,
+        )
+        self._local_monitor = AppKit.NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+            mask,
+            self._handle_local_event,
+        )
+        if self._global_monitor is None and self._local_monitor is None:
+            raise RuntimeError('AppKit returned no keyboard monitor')
+
+    def _event_matches(self, event) -> bool:
+        try:
+            if hasattr(event, 'isARepeat') and event.isARepeat():
+                return False
+            chars = str(event.charactersIgnoringModifiers() or '').lower()
+            flags = int(event.modifierFlags()) & 0xFFFF0000
+            return chars == self._key and (flags & self._required_modifiers) == self._required_modifiers
+        except Exception:
+            return False
+
+    def _handle_event(self, event):
+        if self._event_matches(event):
+            self._callback()
+
+    def _handle_local_event(self, event):
+        self._handle_event(event)
+        return event
+
+    def stop(self):
+        try:
+            import AppKit
+            if self._global_monitor is not None:
+                AppKit.NSEvent.removeMonitor_(self._global_monitor)
+            if self._local_monitor is not None:
+                AppKit.NSEvent.removeMonitor_(self._local_monitor)
+        except Exception:
+            pass
+        self._global_monitor = None
+        self._local_monitor = None
+
+
 def _start_hotkey_listener():
     global _hotkey_listener, _hotkey_listener_combo
 
@@ -1453,7 +1533,23 @@ def _start_hotkey_listener():
 
     _log('INFO', f'Starting hotkey listener: {display_combo}')
     if platform.system() == 'Darwin':
-        listener = _MacCarbonHotkeyListener(MANUAL_SEND_KEYBOARD_BINDING, _on_hotkey_pressed)
+        listener = None
+        last_exc = None
+        for label, candidate in (
+            ('Carbon', _MacCarbonHotkeyListener(MANUAL_SEND_KEYBOARD_BINDING, _on_hotkey_pressed)),
+            ('AppKit', _MacAppKitHotkeyListener(MANUAL_SEND_KEYBOARD_BINDING, _on_hotkey_pressed)),
+        ):
+            try:
+                candidate.start()
+                listener = candidate
+                _log('INFO', f'Hotkey listener backend: {label}')
+                break
+            except Exception as exc:
+                last_exc = exc
+                _log('WARN', f'{label} hotkey backend failed: {exc}')
+        if listener is None:
+            _log('ERROR', f'Hotkey listener failed to start: {last_exc}')
+            return
     else:
         try:
             from pynput import keyboard as _pynput_kb
@@ -1462,11 +1558,11 @@ def _start_hotkey_listener():
             return
         listener = _pynput_kb.GlobalHotKeys({hotkey_combo: _on_hotkey_pressed})
         listener.daemon = True
-    try:
-        listener.start()
-    except Exception as exc:
-        _log('ERROR', f'Hotkey listener failed to start: {exc}')
-        return
+        try:
+            listener.start()
+        except Exception as exc:
+            _log('ERROR', f'Hotkey listener failed to start: {exc}')
+            return
     _hotkey_listener = listener
     _hotkey_listener_combo = hotkey_combo
     _log('INFO', f'Hotkey listener started: {display_combo}')
@@ -1528,6 +1624,19 @@ def _any_integration_enabled() -> bool:
     return bool(VPINLEADERS_ENABLED or WOVP_ENABLED or ISCORED_ENABLED)
 
 
+def _integration_configured(name: str) -> bool:
+    if name == 'vpinleaders':
+        return bool(
+            config.get('vpinleaders', 'machine_id', fallback='').strip()
+            and config.get('vpinleaders', 'api_key', fallback='').strip()
+        )
+    if name == 'wovp':
+        return bool(config.get('wovp', 'api_key', fallback='').strip())
+    if name == 'iscored':
+        return bool(config.get('iscored', 'player_name', fallback='').strip())
+    return False
+
+
 def _refresh_manual_send_listeners():
     """Start/stop the hotkey + joystick listeners based on whether any
     integration is enabled. Safe to call repeatedly."""
@@ -1571,8 +1680,8 @@ def _load_iscored_games_sync():
     try:
         from iscored_client import IScoredClient
         iscored = IScoredClient(CONFIG_PATH)
-        if not iscored.room_urls:
-            _log('WARN', 'iScored: skipping games fetch — no room_urls configured in [iscored]')
+        if not iscored.player_name:
+            _log('WARN', 'iScored: skipping games fetch — no player_name configured in [iscored]')
             return []
         _log('INFO', f'iScored: preloading games from {len(iscored.room_urls)} room(s)…')
         games = iscored.list_all_games(request_timeout=10)
@@ -1731,7 +1840,7 @@ def _run_desktop_app():
             self.wovp_challenges_menu.setEnabled(bool(wovp.api_key))
             try:
                 from iscored_client import IScoredClient
-                self.iscored_games_menu.setEnabled(bool(IScoredClient(CONFIG_PATH).room_urls))
+                self.iscored_games_menu.setEnabled(IScoredClient(CONFIG_PATH).is_ready())
             except Exception:
                 self.iscored_games_menu.setEnabled(False)
 
@@ -1757,6 +1866,20 @@ def _run_desktop_app():
         def _toggle_integration(self, name):
             global VPINLEADERS_ENABLED, WOVP_ENABLED, ISCORED_ENABLED
 
+            currently_enabled = {
+                'vpinleaders': VPINLEADERS_ENABLED,
+                'wovp': WOVP_ENABLED,
+                'iscored': ISCORED_ENABLED,
+            }.get(name)
+            if currently_enabled is None:
+                return
+
+            if not currently_enabled and not _integration_configured(name):
+                _log('INFO', f'Integration {name} needs setup before enabling')
+                self._defer_menu_update()
+                QTimer.singleShot(150, lambda n=name: self._open_integration_setup(n))
+                return
+
             if name == 'vpinleaders':
                 VPINLEADERS_ENABLED = not VPINLEADERS_ENABLED
                 new_value = VPINLEADERS_ENABLED
@@ -1779,6 +1902,9 @@ def _run_desktop_app():
             self._defer_menu_update()
 
         def _open_settings_dialog(self):
+            QTimer.singleShot(150, self._show_settings_dialog)
+
+        def _show_settings_dialog(self):
             try:
                 from settings_ui import open_settings_dialog
             except Exception as exc:
@@ -1790,6 +1916,27 @@ def _run_desktop_app():
                 self._populate_screen_actions()
                 _refresh_manual_send_listeners()
                 _log('INFO', 'Settings updated; config reloaded')
+            self._defer_menu_update()
+
+        def _open_integration_setup(self, name):
+            try:
+                from settings_ui import open_integration_setup
+            except Exception as exc:
+                _log('ERROR', f'Integration setup unavailable: {exc}')
+                return
+
+            saved = open_integration_setup(CONFIG_PATH, name)
+            if saved:
+                load_config()
+                self._populate_screen_actions()
+                _refresh_manual_send_listeners()
+                if name == 'wovp':
+                    _refresh_wovp_challenges_bg()
+                elif name == 'iscored':
+                    _refresh_iscored_games_bg()
+                _log('INFO', f'Integration {name} configured and enabled')
+            else:
+                _log('INFO', f'Integration {name} setup cancelled')
             self._defer_menu_update()
 
         def _populate_screen_actions(self):
@@ -1831,7 +1978,10 @@ def _run_desktop_app():
             self._defer_menu_update()
 
         def _rebuild_games_menu(self, games):
+            from iscored_client import IScoredClient
+
             self.iscored_games_menu.clear()
+            selected_gameroom, selected_game_id, _selected_game_name = IScoredClient(CONFIG_PATH).get_selected_game()
 
             if not games:
                 empty = QAction('No iScored games found', self.iscored_games_menu)
@@ -1851,14 +2001,29 @@ def _run_desktop_app():
                         f"{g.get('name') or '(unnamed)'}  -  ID {g.get('id')}"
                         f"{flag_str}{room_suffix}"
                     )
+                    gameroom = str(g.get('gameroom') or g.get('room_url') or '')
+                    game_id = str(g.get('id') or '')
+                    game_name = str(g.get('name') or '')
+                    if gameroom == selected_gameroom and game_id == selected_game_id:
+                        label = f'{label} [selected]'
                     item = QAction(label, self.iscored_games_menu)
-                    item.setEnabled(False)
+                    item.triggered.connect(
+                        lambda checked, gr=gameroom, gid=game_id, gname=game_name: self._select_iscored_game(gr, gid, gname)
+                    )
                     self.iscored_games_menu.addAction(item)
 
             self.iscored_games_menu.addSeparator()
             refresh_act = QAction('Refresh Games', self.iscored_games_menu)
             refresh_act.triggered.connect(lambda: _refresh_iscored_games_bg())
             self.iscored_games_menu.addAction(refresh_act)
+
+        def _select_iscored_game(self, gameroom, game_id, game_name):
+            from iscored_client import IScoredClient
+            iscored = IScoredClient(CONFIG_PATH)
+            iscored.set_selected_game(gameroom, game_id, game_name)
+            _log('INFO', f'iScored game selected: gameroom={gameroom} game_id={game_id} name={game_name!r}')
+            QTimer.singleShot(150, lambda: self._rebuild_games_menu(_preloaded_iscored_games))
+            self._defer_menu_update()
 
         def _rebuild_challenges_menu(self, challenges):
             from wovp_client import WovpClient

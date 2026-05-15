@@ -243,7 +243,7 @@ class _IntegrationPickerPage(QWizardPage):
         layout = QVBoxLayout(self)
         self.cb_vpin = QCheckBox("VPinLeaders (vpinleaders.com) — pairs this device with your account")
         self.cb_wovp = QCheckBox("WoVP (World of Virtual Pinball) — uses an API key from wovp.com")
-        self.cb_isc = QCheckBox("iScored — submits to one or more iScored gamerooms")
+        self.cb_isc = QCheckBox("iScored — submits to your iScored gameroom")
 
         for cb in (self.cb_vpin, self.cb_wovp, self.cb_isc):
             cb.toggled.connect(self.completeChanged)
@@ -444,42 +444,30 @@ class _IScoredPage(QWizardPage):
     def __init__(self):
         super().__init__()
         self.setTitle("iScored setup")
-        self.setSubTitle("Tell the client which gamerooms to submit to.")
+        self.setSubTitle("Tell the client your iScored username.")
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(
             "1. Create or sign in to an iScored gameroom at https://iscored.info\n"
             "2. Enable API access in the gameroom settings.\n"
-            "3. Provide the player name you want scores submitted under, and\n"
-            "   one or more gameroom URLs (one per line)."
+            "3. Enter your iScored username. The API gameroom is derived from\n"
+            "   the same username."
         ))
 
         form = QFormLayout()
         self.player_edit = QLineEdit()
-        self.player_edit.setPlaceholderText("e.g. Andre")
+        self.player_edit.setPlaceholderText("e.g. Username")
         self.player_edit.textChanged.connect(self.completeChanged)
-        form.addRow("Player name:", self.player_edit)
+        form.addRow("Username:", self.player_edit)
         layout.addLayout(form)
-
-        layout.addWidget(QLabel("Gameroom URLs (one per line):"))
-        self.urls_edit = QPlainTextEdit()
-        self.urls_edit.setPlaceholderText("https://www.iscored.info/Andre")
-        self.urls_edit.textChanged.connect(self.completeChanged)
-        layout.addWidget(self.urls_edit, 1)
+        layout.addStretch(1)
 
     def isComplete(self) -> bool:
-        return bool(self.player_edit.text().strip()) and bool(self.urls_edit.toPlainText().strip())
+        return bool(self.player_edit.text().strip())
 
     @property
     def player_name(self) -> str:
         return self.player_edit.text().strip()
-
-    @property
-    def room_urls(self) -> str:
-        # Normalise whitespace into comma-separated form (the iScored client
-        # accepts both, but a single line is friendlier in the ini file).
-        lines = [ln.strip() for ln in self.urls_edit.toPlainText().splitlines() if ln.strip()]
-        return ",".join(lines)
 
 
 class _CapturePage(QWizardPage):
@@ -587,14 +575,10 @@ class FirstRunWizard(QWizard):
         self.setMinimumSize(620, 520)
         self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
 
-        # Read defaults from the existing (seeded) config.
-        cp = _read_config(config_path)
-        api_url = (cp.get("vpinleaders", "api_url", fallback="") or DEFAULT_API_URL).strip()
-
         self.welcome = _WelcomePage()
         self.nvram = _NvramFolderPage()
         self.picker = _IntegrationPickerPage()
-        self.vpin = _VPinLeadersPage(default_api_url=api_url)
+        self.vpin = _VPinLeadersPage(default_api_url=DEFAULT_API_URL)
         self.wovp = _WoVPPage()
         self.iscored = _IScoredPage()
         self.capture = _CapturePage()
@@ -654,9 +638,7 @@ class FirstRunWizard(QWizard):
         _ensure_section(cp, "vpinleaders")
         if self.picker.want_vpin and self.vpin.isComplete():
             cp["vpinleaders"]["enable"] = "true"
-            cp["vpinleaders"]["api_url"] = (
-                cp["vpinleaders"].get("api_url", "") or DEFAULT_API_URL
-            ).rstrip("/")
+            cp["vpinleaders"]["api_url"] = DEFAULT_API_URL
             cp["vpinleaders"]["machine_id"] = self.vpin.machine_id
             cp["vpinleaders"]["api_key"] = self.vpin.api_key
         else:
@@ -675,7 +657,8 @@ class FirstRunWizard(QWizard):
         if self.picker.want_iscored and self.iscored.isComplete():
             cp["iscored"]["enable"] = "true"
             cp["iscored"]["player_name"] = self.iscored.player_name
-            cp["iscored"]["room_urls"] = self.iscored.room_urls
+            cp["iscored"].pop("room_urls", None)
+            cp["iscored"].pop("gamerooms", None)
         else:
             cp["iscored"]["enable"] = "false"
 
@@ -732,13 +715,14 @@ class SettingsDialog(QDialog):
         vpin_form = QFormLayout(vpin_box)
         self.cb_vpin = QCheckBox("Enable VPinLeaders")
         vpin_form.addRow(self.cb_vpin)
-        self.vpin_api_url = QLineEdit()
-        vpin_form.addRow("API URL:", self.vpin_api_url)
         self.vpin_machine_id = QLineEdit()
         vpin_form.addRow("Machine ID:", self.vpin_machine_id)
         self.vpin_api_key = QLineEdit()
         self.vpin_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         vpin_form.addRow("API key:", self.vpin_api_key)
+        self.vpin_register_btn = QPushButton("Register...")
+        self.vpin_register_btn.clicked.connect(self._register_vpinleaders)
+        vpin_form.addRow(self.vpin_register_btn)
         layout.addWidget(vpin_box)
 
         # WoVP
@@ -757,9 +741,7 @@ class SettingsDialog(QDialog):
         self.cb_iscored = QCheckBox("Enable iScored")
         isc_form.addRow(self.cb_iscored)
         self.iscored_player = QLineEdit()
-        isc_form.addRow("Player name:", self.iscored_player)
-        self.iscored_urls = QPlainTextEdit()
-        isc_form.addRow("Gameroom URLs:", self.iscored_urls)
+        isc_form.addRow("Username:", self.iscored_player)
         layout.addWidget(isc_box)
 
         layout.addStretch(1)
@@ -814,7 +796,6 @@ class SettingsDialog(QDialog):
     def _load(self) -> None:
         cp = _read_config(self.config_path)
         self.cb_vpin.setChecked(_truthy(cp.get("vpinleaders", "enable", fallback="false")))
-        self.vpin_api_url.setText(cp.get("vpinleaders", "api_url", fallback=DEFAULT_API_URL))
         self.vpin_machine_id.setText(cp.get("vpinleaders", "machine_id", fallback=""))
         self.vpin_api_key.setText(cp.get("vpinleaders", "api_key", fallback=""))
 
@@ -823,10 +804,6 @@ class SettingsDialog(QDialog):
 
         self.cb_iscored.setChecked(_truthy(cp.get("iscored", "enable", fallback="false")))
         self.iscored_player.setText(cp.get("iscored", "player_name", fallback=""))
-        urls = cp.get("iscored", "room_urls", fallback="")
-        # configparser may have stored a comma-separated list; show one per line for editing
-        normalised = "\n".join(part.strip() for part in urls.replace(",", "\n").splitlines() if part.strip())
-        self.iscored_urls.setPlainText(normalised)
 
         try:
             sid = int(cp.get("screenshot", "screen_to_capture", fallback="0") or "0")
@@ -847,7 +824,7 @@ class SettingsDialog(QDialog):
 
         _ensure_section(cp, "vpinleaders")
         cp["vpinleaders"]["enable"] = "true" if self.cb_vpin.isChecked() else "false"
-        cp["vpinleaders"]["api_url"] = self.vpin_api_url.text().strip().rstrip("/") or DEFAULT_API_URL
+        cp["vpinleaders"]["api_url"] = DEFAULT_API_URL
         cp["vpinleaders"]["machine_id"] = self.vpin_machine_id.text().strip()
         cp["vpinleaders"]["api_key"] = self.vpin_api_key.text().strip()
 
@@ -858,8 +835,8 @@ class SettingsDialog(QDialog):
         _ensure_section(cp, "iscored")
         cp["iscored"]["enable"] = "true" if self.cb_iscored.isChecked() else "false"
         cp["iscored"]["player_name"] = self.iscored_player.text().strip()
-        urls = [ln.strip() for ln in self.iscored_urls.toPlainText().splitlines() if ln.strip()]
-        cp["iscored"]["room_urls"] = ",".join(urls)
+        cp["iscored"].pop("room_urls", None)
+        cp["iscored"].pop("gamerooms", None)
 
         _ensure_section(cp, "screenshot")
         cp["screenshot"]["screen_to_capture"] = str(int(self.screen_combo.currentData() or 0))
@@ -881,6 +858,89 @@ class SettingsDialog(QDialog):
             QMessageBox.critical(self, "Could not save settings", str(exc))
             return
         self.accept()
+
+    def _register_vpinleaders(self) -> None:
+        wizard = IntegrationSetupWizard(self.config_path, "vpinleaders", parent=self)
+        QTimer.singleShot(0, wizard.raise_)
+        QTimer.singleShot(0, wizard.activateWindow)
+        result = wizard.exec()
+        del wizard
+        if not result:
+            return
+
+        cp = _read_config(self.config_path)
+        self.cb_vpin.setChecked(_truthy(cp.get("vpinleaders", "enable", fallback="true")))
+        self.vpin_machine_id.setText(cp.get("vpinleaders", "machine_id", fallback=""))
+        self.vpin_api_key.setText(cp.get("vpinleaders", "api_key", fallback=""))
+
+
+class IntegrationSetupWizard(QWizard):
+    PAGE_SETUP = 0
+
+    def __init__(self, config_path: str, integration: str, parent=None):
+        super().__init__(parent)
+        self.config_path = config_path
+        self.integration = integration
+        self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
+        self.setMinimumSize(620, 460)
+        self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
+
+        cp = _read_config(config_path)
+
+        if integration == "vpinleaders":
+            self.setWindowTitle("VPinLeaders Client - VPinLeaders Setup")
+            self.page = _VPinLeadersPage(default_api_url=DEFAULT_API_URL)
+        elif integration == "wovp":
+            self.setWindowTitle("VPinLeaders Client - WoVP Setup")
+            self.page = _WoVPPage()
+            self.page.key_edit.setText(cp.get("wovp", "api_key", fallback=""))
+        elif integration == "iscored":
+            self.setWindowTitle("VPinLeaders Client - iScored Setup")
+            self.page = _IScoredPage()
+            self.page.player_edit.setText(cp.get("iscored", "player_name", fallback=""))
+        else:
+            raise ValueError(f"Unknown integration: {integration}")
+
+        self.setPage(self.PAGE_SETUP, self.page)
+
+    def nextId(self) -> int:
+        return -1
+
+    def accept(self) -> None:
+        try:
+            self._save()
+        except Exception as exc:
+            QMessageBox.critical(self, "Could not save settings", str(exc))
+            return
+        super().accept()
+
+    def _save(self) -> None:
+        cp = _read_config(self.config_path)
+
+        if self.integration == "vpinleaders":
+            if not isinstance(self.page, _VPinLeadersPage) or not self.page.isComplete():
+                raise ValueError("VPinLeaders pairing is not complete.")
+            _ensure_section(cp, "vpinleaders")
+            cp["vpinleaders"]["enable"] = "true"
+            cp["vpinleaders"]["api_url"] = DEFAULT_API_URL
+            cp["vpinleaders"]["machine_id"] = self.page.machine_id
+            cp["vpinleaders"]["api_key"] = self.page.api_key
+        elif self.integration == "wovp":
+            if not isinstance(self.page, _WoVPPage) or not self.page.isComplete():
+                raise ValueError("WoVP API key is required.")
+            _ensure_section(cp, "wovp")
+            cp["wovp"]["enable"] = "true"
+            cp["wovp"]["api_key"] = self.page.api_key
+        elif self.integration == "iscored":
+            if not isinstance(self.page, _IScoredPage) or not self.page.isComplete():
+                raise ValueError("iScored username is required.")
+            _ensure_section(cp, "iscored")
+            cp["iscored"]["enable"] = "true"
+            cp["iscored"]["player_name"] = self.page.player_name
+            cp["iscored"].pop("room_urls", None)
+            cp["iscored"].pop("gamerooms", None)
+
+        _write_config(cp, self.config_path)
 
 
 # ---------------------------------------------------------------------------
@@ -908,6 +968,8 @@ def run_first_run_wizard(config_path: str) -> bool:
     """Run the first-run wizard. Returns True if accepted, False if cancelled."""
     app = _ensure_qapplication()
     wizard = FirstRunWizard(config_path)
+    QTimer.singleShot(0, wizard.raise_)
+    QTimer.singleShot(0, wizard.activateWindow)
     result = wizard.exec()
     del wizard
     return bool(result)
@@ -917,6 +979,19 @@ def open_settings_dialog(config_path: str, parent=None) -> bool:
     """Open the tabbed settings editor. Returns True if changes were saved."""
     app = _ensure_qapplication()
     dlg = SettingsDialog(config_path, parent=parent)
+    QTimer.singleShot(0, dlg.raise_)
+    QTimer.singleShot(0, dlg.activateWindow)
     result = dlg.exec()
     del dlg
+    return bool(result)
+
+
+def open_integration_setup(config_path: str, integration: str, parent=None) -> bool:
+    """Open a focused setup flow for one integration and enable it on success."""
+    app = _ensure_qapplication()
+    wizard = IntegrationSetupWizard(config_path, integration, parent=parent)
+    QTimer.singleShot(0, wizard.raise_)
+    QTimer.singleShot(0, wizard.activateWindow)
+    result = wizard.exec()
+    del wizard
     return bool(result)

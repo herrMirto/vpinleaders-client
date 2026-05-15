@@ -1,9 +1,14 @@
 # VPinLeaders Client
 
-A client application that automatically captures and sends Visual Pinball X (VPX) scores and screenshots to [VPinLeaders](https://www.vpinleaders.com). The application runs in the background and provides a system tray icon for easy configuration and mode switching
+VPinLeaders Client is a score tracker for Visual Pinball X (VPX) cabinets and desktop setups. It watches your games as you play, captures the final score, and helps you submit results to supported leaderboard, challenges, and score-sharing services.
 
-- Live PinMAME memory polling
-- `.nv` file polling fallback for roms with flush after closing VPX.
+It currently supports:
+
+- VPinLeaders leaderboard
+- WoVP challenges
+- iScored gamerooms
+
+The client runs in the background monitoring PinMAME/NVRAM directly from Visual Pinball X. Once a game is finished, you can press the configured hotkeys and your score will be sent to one or many integrations that are setup.
 
 ## Before You Start
 
@@ -96,20 +101,60 @@ Registration creates the config file automatically in the correct location:
 - macOS: `~/Library/Application Support/vpinleaders-client/config.ini`
 - Windows: `%APPDATA%\vpinleaders-client\config.ini`
 
-A sanitized [`config.example.ini`](config.example.ini) is kept in the repo only as a reference/template and for seeding the generated config.
+After the first run, use the tray menu to open `Settings`. From there you can
+enable integrations, choose the display used for screenshots, and register
+VPinLeaders again if needed.
 
-Main config sections:
+### VPinLeaders
 
-- `[credentials]` API values
-- `[screenshot]` options (used only for manual sends)
-- `[hotkeys]` manual keyboard/joystick bindings
-- `[nvram]` base NVRAM discovery folder (`base_dir`)
-- `[score-mode]`, `[send-mode]`, `[challenge]` as needed
+VPinLeaders connects your VPX setup to the VPinLeaders leaderboard. Register
+the client during first setup, or open `Settings` and click `Register` to start
+the QR code flow again.
 
-NVRAM monitor settings are internal defaults in code:
+### WoVP Challenges
 
-- Scan pattern: `**/pinmame/nvram/*.nv;*.nv`
-- Live PinMAME: enabled
+WoVP lets the client submit scores to active challenges.
+
+To configure it:
+
+1. Open the client tray menu.
+2. Choose `Settings`.
+3. Enable `WoVP`.
+4. Paste your WoVP API key.
+5. Save the settings.
+
+When WoVP is enabled, the client loads active challenges at startup and shows
+them in the tray menu. Select the challenge you want to submit to before
+sending a score.
+
+WoVP submissions require a screenshot. The client captures the configured
+display when you trigger a manual send.
+
+### iScored Gamerooms
+
+iScored lets the client submit scores to an iScored gameroom.
+
+To configure it:
+
+1. In iScored, enable API access in your gameroom settings.
+2. Open the client tray menu.
+3. Choose `Settings`.
+4. Enable `iScored`.
+5. Enter your iScored username.
+6. Save the settings.
+
+Your iScored username is also your API gameroom name. For example, username
+`Username` maps to:
+
+`https://www.iscored.info/api/Username`
+
+After iScored is configured, the client loads your gameroom games and shows
+them under `iScored > Games` in the tray menu. Select the game you want to
+submit to before sending a score.
+
+iScored submissions use the selected gameroom and game ID. If a screenshot is
+available, the client sends it as a photo with the score.
+
 
 ## Source Run
 
@@ -150,23 +195,3 @@ is maintained here for two reasons:
 The intention is to upstream all compatible additions back to the
 [tomlogic/pinmame-nvram-maps](https://github.com/tomlogic/pinmame-nvram-maps)
 project once they are stable and conform to its file-format conventions.
-
-## CLI Helpers
-
-List supported ROMs:
-
-```bash
-python3 main.py --list-roms
-```
-
-List high scores for one ROM (offline from `.nv` file):
-
-```bash
-python3 main.py --list-highscores afm_113b
-```
-
-Optional alternate NVRAM base dir:
-
-```bash
-python3 main.py --list-highscores afm_113b --base-dir /path/to/nvram-root
-```

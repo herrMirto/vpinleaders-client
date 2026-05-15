@@ -14,11 +14,12 @@ class IScoredClient:
     """
     Client for iScored.info game rooms.
 
-    Supports multiple game rooms (configured in [iscored].room_urls). Uses the
-    current iScored API rooted at /api/{gameroom}.
+    Uses the current iScored API rooted at /api/{gameroom}. iScored gamerooms
+    are addressed by username, so [iscored].player_name is also the gameroom.
 
     Backwards compatibility:
-      - Legacy single-URL key 'room_url' is honored when 'room_urls' is missing.
+      - Legacy room URL/gameroom keys are honored only when player_name is
+        missing.
       - Legacy 'user' is used as the player name when 'player_name' is missing.
     """
 
@@ -30,28 +31,26 @@ class IScoredClient:
         self.config.read(config_path)
 
         self.player_name = self._cfg_get("player_name").strip()
+        self.selected_gameroom = self._cfg_get("selected_gameroom").strip()
+        self.selected_game_id = self._cfg_get("selected_game_id").strip()
+        self.selected_game_name = self._cfg_get("selected_game_name").strip()
         configured_user = self._cfg_get("user").strip()
         if not self.player_name:
             # Legacy fallback: older configs used 'user' for the submitting player.
             self.player_name = configured_user
 
-        # Master list of configured room URLs. Prefer the new multi key; fall back to
-        # the legacy single key so existing configs keep working untouched.
-        urls_raw = self._cfg_get("room_urls").strip()
-        if not urls_raw:
-            urls_raw = self._cfg_get("room_url").strip()
-
-        # Accept comma- or newline-separated URLs. If no URL is configured, allow
-        # the gameroom/user name to come directly from config.ini.
-        self.room_urls: List[str] = [
-            u.strip() for u in re.split(r"[,\n]+", urls_raw) if u.strip()
-        ]
-        if not self.room_urls:
+        # iScored gameroom is the username: /api/{username}. Keep legacy room
+        # keys only as a fallback for older configs that have no player_name.
+        if self.player_name:
+            self.room_urls: List[str] = [self.player_name]
+        else:
+            urls_raw = self._cfg_get("room_urls").strip() or self._cfg_get("room_url").strip()
             gamerooms_raw = (
-                self._cfg_get("gamerooms").strip()
+                urls_raw
+                or self._cfg_get("gamerooms").strip()
                 or self._cfg_get("gameroom").strip()
                 or self._cfg_get("gameroom_name").strip()
-                or (configured_user if self.player_name else "")
+                or configured_user
             )
             self.room_urls = [
                 name.strip() for name in re.split(r"[,\n]+", gamerooms_raw) if name.strip()
@@ -103,11 +102,12 @@ class IScoredClient:
 
     def _split_url(self, url: str) -> Tuple[str, Dict[str, str]]:
         """
-        Parses an iScored room URL into (base_url, base_params).
+        Parses an iScored username or legacy room URL into (base_url, base_params).
 
-        The gameroom name is the first path component for normal room URLs,
-        the second path component for /api/{gameroom} URLs, or the 'user' query
-        parameter for room.php/public links.
+        For the current API the normal input is the username. Legacy room URLs
+        are still accepted; the gameroom name is the first path component for
+        normal room URLs, the second path component for /api/{gameroom} URLs,
+        or the 'user' query parameter for room.php/public links.
         """
         if not url:
             raise ValueError("iScored room URL is empty")
@@ -178,12 +178,27 @@ class IScoredClient:
     # ------------------------------------------------------------- readiness
 
     def is_ready(self) -> bool:
-        """True when player_name and at least one configured room URL exist."""
-        return bool(self.player_name) and bool(self.room_urls)
+        """True when player_name is configured. The gameroom is derived from it."""
+        return bool(self.player_name)
+
+    def get_selected_game(self) -> Tuple[str, str, str]:
+        return self.selected_gameroom, self.selected_game_id, self.selected_game_name
+
+    def set_selected_game(self, gameroom: str, game_id: str, game_name: str = "") -> None:
+        if "iscored" not in self.config:
+            self.config["iscored"] = {}
+        self.config["iscored"]["selected_gameroom"] = str(gameroom or "").strip()
+        self.config["iscored"]["selected_game_id"] = str(game_id or "").strip()
+        self.config["iscored"]["selected_game_name"] = str(game_name or "").strip()
+        with open(self.config_path, "w", encoding="utf-8") as fh:
+            self.config.write(fh)
+        self.selected_gameroom = self.config["iscored"]["selected_gameroom"]
+        self.selected_game_id = self.config["iscored"]["selected_game_id"]
+        self.selected_game_name = self.config["iscored"]["selected_game_name"]
 
     def list_all_games(self, request_timeout: int = 5) -> List[Dict]:
         """
-        Returns a flat list of every game across every configured room URL,
+        Returns a flat list of every game in the derived iScored gameroom,
         sorted by game name. Each entry includes:
           {id, name, room_name, room_url, isGameLocked, hidden}
 
@@ -204,6 +219,7 @@ class IScoredClient:
                     "name": g.get("name") or "",
                     "room_name": room_name,
                     "room_url": url,
+                    "gameroom": room.get("gameroom") or url,
                     "isGameLocked": bool(g.get("isGameLocked")),
                     "hidden": bool(g.get("hidden")),
                 })
@@ -407,6 +423,20 @@ class IScoredClient:
                 best_game = g
         return best_game
 
+    def _room_for_gameroom(self, gameroom: str) -> Optional[dict]:
+        target = str(gameroom or "").strip()
+        if not target:
+            return None
+        for url in self.room_urls:
+            try:
+                room = self.load_game_room(url)
+            except Exception as e:
+                logger.warning(f"iScored: failed to load room {url}: {e}")
+                continue
+            if str(room.get("gameroom") or "") == target:
+                return room
+        return None
+
     def submit_score(self, score: int, rom: str, vpx_file: str = "") -> dict:
         """
         Iterates every configured iScored room, finds the game that matches the
@@ -418,31 +448,49 @@ class IScoredClient:
         if not self.player_name:
             return {"success": False, "message": "iScored player_name is not configured."}
         if not self.room_urls:
-            return {"success": False, "message": "No iScored room URLs are configured."}
-
-        # iScored uses friendly game names; the VPX filename usually matches them
-        # better than the ROM short name does.
-        search_name = vpx_file.replace(".vpx", "") if vpx_file else rom
+            return {"success": False, "message": "iScored gameroom could not be derived from player_name."}
 
         match_room: Optional[dict] = None
         match_game: Optional[dict] = None
-        for url in self.room_urls:
-            try:
-                room = self.load_game_room(url)
-            except Exception as e:
-                logger.warning(f"iScored: failed to load room {url}: {e}")
-                continue
-            game = self._find_game(room, search_name)
-            if game is not None:
-                match_room = room
-                match_game = game
-                break
 
-        if match_game is None or match_room is None:
-            return {
-                "success": False,
-                "message": f"Game '{search_name}' not found in any configured iScored room.",
-            }
+        if self.selected_gameroom and self.selected_game_id:
+            match_room = self._room_for_gameroom(self.selected_gameroom)
+            if match_room is None:
+                return {
+                    "success": False,
+                    "message": f"Selected iScored gameroom '{self.selected_gameroom}' could not be loaded.",
+                }
+            for game in match_room.get("games") or []:
+                if str(game.get("id") or "") == str(self.selected_game_id):
+                    match_game = game
+                    break
+            if match_game is None:
+                return {
+                    "success": False,
+                    "message": f"Selected iScored game ID '{self.selected_game_id}' was not found.",
+                }
+        else:
+            # iScored uses friendly game names; the VPX filename usually matches them
+            # better than the ROM short name does. Keep this as a fallback when no
+            # explicit tray selection has been saved.
+            search_name = vpx_file.replace(".vpx", "") if vpx_file else rom
+            for url in self.room_urls:
+                try:
+                    room = self.load_game_room(url)
+                except Exception as e:
+                    logger.warning(f"iScored: failed to load room {url}: {e}")
+                    continue
+                game = self._find_game(room, search_name)
+                if game is not None:
+                    match_room = room
+                    match_game = game
+                    break
+
+            if match_game is None or match_room is None:
+                return {
+                    "success": False,
+                    "message": f"Game '{search_name}' not found in any configured iScored room.",
+                }
 
         if match_game.get("isGameLocked"):
             return {"success": True, "message": f"iScored: submission is locked for '{match_game['name']}'."}
