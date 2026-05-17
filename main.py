@@ -1740,7 +1740,7 @@ def _refresh_iscored_games_bg():
 
 def _run_desktop_app():
     from PyQt6.QtCore import QTimer, pyqtSignal
-    from PyQt6.QtGui import QAction, QIcon
+    from PyQt6.QtGui import QAction, QActionGroup, QIcon
     from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
     from notifier import NotificationOverlay
 
@@ -1759,51 +1759,44 @@ def _run_desktop_app():
 
             self.menu = QMenu(parent)
 
-            # ── VPinLeaders submenu ────────────────────────────────────
-            self.vpinleaders_menu = QMenu('VPinLeaders', self.menu)
-            self.act_vpinleaders_enable = QAction('Enable VPinLeaders', self.vpinleaders_menu)
+            # ── Integration toggles ────────────────────────────────────
+            self.act_vpinleaders_enable = QAction('Enable VPinLeaders', self.menu)
             self.act_vpinleaders_enable.setCheckable(True)
             self.act_vpinleaders_enable.triggered.connect(lambda: self._toggle_integration('vpinleaders'))
-            self.vpinleaders_menu.addAction(self.act_vpinleaders_enable)
-            self.menu.addMenu(self.vpinleaders_menu)
+            self.menu.addAction(self.act_vpinleaders_enable)
 
-            # ── WoVP submenu ───────────────────────────────────────────
-            self.wovp_menu = QMenu('WoVP', self.menu)
-            self.act_wovp_enable = QAction('Enable WoVP', self.wovp_menu)
+            self.act_wovp_enable = QAction('Enable WoVP', self.menu)
             self.act_wovp_enable.setCheckable(True)
             self.act_wovp_enable.triggered.connect(lambda: self._toggle_integration('wovp'))
-            self.wovp_menu.addAction(self.act_wovp_enable)
-            self.wovp_menu.addSeparator()
+            self.menu.addAction(self.act_wovp_enable)
 
-            self.wovp_challenges_menu = QMenu('Challenges', self.wovp_menu)
-            self._rebuild_challenges_menu(_preloaded_wovp_challenges)
-            self.wovp_menu.addMenu(self.wovp_challenges_menu)
-
-            self.menu.addMenu(self.wovp_menu)
-
-            # ── iScored submenu ────────────────────────────────────────
-            self.iscored_menu = QMenu('iScored', self.menu)
-            self.act_iscored_enable = QAction('Enable iScored', self.iscored_menu)
+            self.act_iscored_enable = QAction('Enable iScored', self.menu)
             self.act_iscored_enable.setCheckable(True)
             self.act_iscored_enable.triggered.connect(lambda: self._toggle_integration('iscored'))
-            self.iscored_menu.addAction(self.act_iscored_enable)
-            self.iscored_menu.addSeparator()
-
-            self.iscored_games_menu = QMenu('Games', self.iscored_menu)
-            self._rebuild_games_menu(_preloaded_iscored_games)
-            self.iscored_menu.addMenu(self.iscored_games_menu)
-
-            self.menu.addMenu(self.iscored_menu)
-
-            # ── Screenshots submenu ────────────────────────────────────
-            # Capture is unconditional for VPinLeaders / WoVP; this submenu
-            # only chooses which monitor to capture.
-            self.screenshots_menu = QMenu('Capture Display', self.menu)
-            self.screen_actions = []
-            self._populate_screen_actions()
-            self.menu.addMenu(self.screenshots_menu)
+            self.menu.addAction(self.act_iscored_enable)
 
             self.menu.addSeparator()
+
+            # ── Selection actions ──────────────────────────────────────
+            self.wovp_challenge_actions = []
+            self.iscored_game_actions = []
+            self.screen_actions = []
+            self.wovp_challenge_group = QActionGroup(self.menu)
+            self.wovp_challenge_group.setExclusive(True)
+            self.iscored_game_group = QActionGroup(self.menu)
+            self.iscored_game_group.setExclusive(True)
+            self.screen_action_group = QActionGroup(self.menu)
+            self.screen_action_group.setExclusive(True)
+
+            self.iscored_section_marker = self.menu.addSeparator()
+            self.capture_section_marker = self.menu.addSeparator()
+            self.selection_end_marker = self.menu.addSeparator()
+
+            self._rebuild_challenges_menu(_preloaded_wovp_challenges)
+            self._rebuild_games_menu(_preloaded_iscored_games)
+            # Capture is unconditional for VPinLeaders / WoVP; these actions
+            # only choose which monitor to capture.
+            self._populate_screen_actions()
 
             self.act_settings = QAction('Settings…', self.menu)
             self.act_settings.triggered.connect(self._open_settings_dialog)
@@ -1836,12 +1829,15 @@ def _run_desktop_app():
             # WoVP challenges: accessible whenever api_key is present so the user
             # can pre-configure a challenge without having to enable WoVP first.
             wovp = WovpClient(CONFIG_PATH)
-            self.wovp_challenges_menu.setEnabled(bool(wovp.api_key))
+            for act in self.wovp_challenge_actions:
+                act.setEnabled(bool(wovp.api_key) and act.data() not in ('empty', 'header'))
             try:
                 from iscored_client import IScoredClient
-                self.iscored_games_menu.setEnabled(IScoredClient(CONFIG_PATH).is_ready())
+                iscored_ready = IScoredClient(CONFIG_PATH).is_ready()
             except Exception:
-                self.iscored_games_menu.setEnabled(False)
+                iscored_ready = False
+            for act in self.iscored_game_actions:
+                act.setEnabled(iscored_ready and act.data() not in ('empty', 'header'))
 
             # Tooltip summarises which integrations are live.
             enabled_labels = [
@@ -1942,21 +1938,30 @@ def _run_desktop_app():
             """Rebuilds the screen command list from the currently connected displays."""
             # Remove any existing screen actions
             for act in self.screen_actions:
-                self.screenshots_menu.removeAction(act)
+                self.screen_action_group.removeAction(act)
+                self.menu.removeAction(act)
             self.screen_actions = []
 
             screens = QApplication.instance().screens()
             selected_idx = SCREENSHOT_SCREEN_ID if SCREENSHOT_SCREEN_ID is not None else 0
+            if screens:
+                header = QAction('Capture Display', self.menu)
+                header.setData('header')
+                header.setEnabled(False)
+                self.screen_actions.append(header)
+                self.menu.insertAction(self.selection_end_marker, header)
 
             for idx, screen in enumerate(screens):
                 geom = screen.geometry()
                 name = screen.name() or f'Screen {idx}'
-                selected = 'Active - ' if idx == selected_idx else ''
-                label = f'{selected}Screen {idx}  -  {name}  ({geom.width()}x{geom.height()})'
-                act = QAction(label, self.screenshots_menu)
+                label = f'Screen {idx}  -  {name}  ({geom.width()}x{geom.height()})'
+                act = QAction(label, self.menu)
+                act.setCheckable(True)
+                act.setChecked(idx == selected_idx)
+                self.screen_action_group.addAction(act)
                 act.triggered.connect(lambda checked, i=idx: self._select_screen(i))
                 self.screen_actions.append(act)
-                self.screenshots_menu.addAction(act)
+                self.menu.insertAction(self.selection_end_marker, act)
 
         def _select_screen(self, screen_idx):
             global SCREENSHOT_SCREEN_ID
@@ -1979,13 +1984,25 @@ def _run_desktop_app():
         def _rebuild_games_menu(self, games):
             from iscored_client import IScoredClient
 
-            self.iscored_games_menu.clear()
+            for act in self.iscored_game_actions:
+                self.iscored_game_group.removeAction(act)
+                self.menu.removeAction(act)
+            self.iscored_game_actions = []
+
             selected_gameroom, selected_game_id, _selected_game_name = IScoredClient(CONFIG_PATH).get_selected_game()
 
+            header = QAction('iScored Game', self.menu)
+            header.setData('header')
+            header.setEnabled(False)
+            self.iscored_game_actions.append(header)
+            self.menu.insertAction(self.capture_section_marker, header)
+
             if not games:
-                empty = QAction('No iScored games found', self.iscored_games_menu)
+                empty = QAction('No iScored games found', self.menu)
+                empty.setData('empty')
                 empty.setEnabled(False)
-                self.iscored_games_menu.addAction(empty)
+                self.iscored_game_actions.append(empty)
+                self.menu.insertAction(self.capture_section_marker, empty)
             else:
                 multi_room = len({g.get('room_url') for g in games}) > 1
                 for g in games:
@@ -2003,18 +2020,20 @@ def _run_desktop_app():
                     gameroom = str(g.get('gameroom') or g.get('room_url') or '')
                     game_id = str(g.get('id') or '')
                     game_name = str(g.get('name') or '')
-                    if gameroom == selected_gameroom and game_id == selected_game_id:
-                        label = f'{label} [selected]'
-                    item = QAction(label, self.iscored_games_menu)
+                    item = QAction(label, self.menu)
+                    item.setCheckable(True)
+                    item.setChecked(gameroom == selected_gameroom and game_id == selected_game_id)
+                    self.iscored_game_group.addAction(item)
                     item.triggered.connect(
                         lambda checked, gr=gameroom, gid=game_id, gname=game_name: self._select_iscored_game(gr, gid, gname)
                     )
-                    self.iscored_games_menu.addAction(item)
+                    self.iscored_game_actions.append(item)
+                    self.menu.insertAction(self.capture_section_marker, item)
 
-            self.iscored_games_menu.addSeparator()
-            refresh_act = QAction('Refresh Games', self.iscored_games_menu)
+            refresh_act = QAction('Refresh iScored Games', self.menu)
             refresh_act.triggered.connect(lambda: _refresh_iscored_games_bg())
-            self.iscored_games_menu.addAction(refresh_act)
+            self.iscored_game_actions.append(refresh_act)
+            self.menu.insertAction(self.capture_section_marker, refresh_act)
 
         def _select_iscored_game(self, gameroom, game_id, game_name):
             from iscored_client import IScoredClient
@@ -2027,30 +2046,44 @@ def _run_desktop_app():
         def _rebuild_challenges_menu(self, challenges):
             from wovp_client import WovpClient
 
-            self.wovp_challenges_menu.clear()
+            for act in self.wovp_challenge_actions:
+                self.wovp_challenge_group.removeAction(act)
+                self.menu.removeAction(act)
+            self.wovp_challenge_actions = []
 
             wovp = WovpClient(CONFIG_PATH)
             selected_id, _ = wovp.get_selected_challenge()
 
+            header = QAction('WoVP Challenge', self.menu)
+            header.setData('header')
+            header.setEnabled(False)
+            self.wovp_challenge_actions.append(header)
+            self.menu.insertAction(self.iscored_section_marker, header)
+
             if not challenges:
-                empty = QAction('No active challenges found', self.wovp_challenges_menu)
+                empty = QAction('No active challenges found', self.menu)
+                empty.setData('empty')
                 empty.setEnabled(False)
-                self.wovp_challenges_menu.addAction(empty)
+                self.wovp_challenge_actions.append(empty)
+                self.menu.insertAction(self.iscored_section_marker, empty)
             else:
                 for ch in challenges:
                     ch_id = ch['id']
                     ch_name = ch['name']
-                    label = f'{ch_name} [selected]' if ch_id == selected_id else ch_name
-                    act = QAction(label, self.wovp_challenges_menu)
+                    act = QAction(ch_name, self.menu)
+                    act.setCheckable(True)
+                    act.setChecked(ch_id == selected_id)
+                    self.wovp_challenge_group.addAction(act)
                     act.triggered.connect(
                         lambda checked, cid=ch_id, cname=ch_name: self._select_challenge(cid, cname)
                     )
-                    self.wovp_challenges_menu.addAction(act)
+                    self.wovp_challenge_actions.append(act)
+                    self.menu.insertAction(self.iscored_section_marker, act)
 
-            self.wovp_challenges_menu.addSeparator()
-            refresh_act = QAction('Refresh Challenges', self.wovp_challenges_menu)
+            refresh_act = QAction('Refresh WoVP Challenges', self.menu)
             refresh_act.triggered.connect(lambda: _refresh_wovp_challenges_bg())
-            self.wovp_challenges_menu.addAction(refresh_act)
+            self.wovp_challenge_actions.append(refresh_act)
+            self.menu.insertAction(self.iscored_section_marker, refresh_act)
 
         def _select_challenge(self, challenge_id, challenge_name):
             from wovp_client import WovpClient
