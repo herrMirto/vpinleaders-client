@@ -1,15 +1,11 @@
 import argparse
-import json
-import glob
 import os
 import platform
 import signal
-import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Optional
 
 APP_CONFIG_DIR_NAME = 'vpinleaders-client'
 CONFIG_FILE_NAME = 'config.ini'
@@ -69,7 +65,7 @@ def _ensure_config_dir() -> None:
 def _missing_config_message(config_path: str) -> str:
     return (
         'Configuration file not found. '
-        f'Run the client with --register --machine-id YOUR_MACHINE_ID to complete setup. '
+        f'Run the client with --register --machine-id YOUR_MACHINE_ID --nvrams-folder YOUR_TABLES_FOLDER to complete setup. '
         f'Config path: {config_path}'
     )
 
@@ -101,20 +97,6 @@ def _ensure_config_seeded() -> bool:
         return False
 
 
-def _configured_nvram_base_dir() -> str:
-    try:
-        import configparser as _configparser
-        cp = _configparser.ConfigParser()
-        cp.read(_config_path())
-        if 'nvram' in cp:
-            configured = cp['nvram'].get('base_dir', '').strip()
-            if configured:
-                return os.path.expanduser(configured)
-    except Exception:
-        pass
-    return ''
-
-
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -123,147 +105,6 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-def _fast_list_roms(index_path: str):
-    with open(index_path, 'r', encoding='utf-8') as f:
-        index = json.load(f)
-    if not isinstance(index, dict):
-        raise ValueError('index.json root is not an object')
-    roms = sorted(
-        str(k)
-        for k, v in index.items()
-        if isinstance(k, str)
-        and not k.startswith('_')
-        and isinstance(v, str)
-        and v.endswith('.map.json')
-    )
-    print(f'Supported ROMs ({len(roms)}):')
-    for rom in roms:
-        print(rom)
-
-
-def _format_table(rows):
-    if not rows:
-        return ''
-    widths = [max(len(str(r[i])) for r in rows) for i in range(len(rows[0]))]
-    lines = []
-    for idx, row in enumerate(rows):
-        line = ' | '.join(str(row[i]).ljust(widths[i]) for i in range(len(row)))
-        lines.append(line)
-        if idx == 0:
-            lines.append('-+-'.join('-' * w for w in widths))
-    return '\n'.join(lines)
-
-
-def _find_nv_file_for_rom(base_dir: str, rom: str):
-    if not base_dir or not str(base_dir).strip():
-        return None, 'Missing NVRAM base dir. Set [nvram].base_dir in config.ini or pass --base-dir.'
-    root = os.path.expanduser(base_dir)
-    patterns = [
-        os.path.join(root, '**', 'pinmame', 'nvram', f'{rom}.nv'),
-        os.path.join(root, f'{rom}.nv'),
-    ]
-    out = []
-    seen = set()
-    for pattern in patterns:
-        for p in glob.glob(pattern, recursive=True):
-            cp = os.path.normpath(os.path.expanduser(p))
-            if cp in seen:
-                continue
-            seen.add(cp)
-            out.append(p)
-    matches = sorted(out)
-    if len(matches) == 1:
-        return matches[0], None
-    if not matches:
-        return None, f'No .nv file found for ROM "{rom}" under {base_dir}'
-    details = '\n'.join(f'  - {m}' for m in matches)
-    return None, (
-        f'Expected exactly one .nv file for ROM "{rom}", but found {len(matches)}:\n{details}\n'
-        'Please keep only one matching table nvram for this ROM.'
-    )
-
-
-def _fast_list_highscores(maps_root: str, base_dir: str, rom: str):
-    from nvram_monitor import MapRepository, DescriptorDecoder  # local import for CLI fast-path
-
-    repo = MapRepository(maps_root)
-    rel = repo._resolve_map_rel(rom)
-    if not isinstance(rel, str) or not rel.endswith('.map.json'):
-        raise ValueError(f'ROM "{rom}" is not in nvram-maps index')
-
-    map_data = repo.map_for_rom(rom) or {}
-    high_scores = map_data.get('high_scores')
-    mode_champions = map_data.get('mode_champions')
-    has_high_scores = isinstance(high_scores, list) and len(high_scores) > 0
-    has_mode_champions = isinstance(mode_champions, list) and len(mode_champions) > 0
-    if not has_high_scores and not has_mode_champions:
-        raise ValueError(f'ROM "{rom}" has neither "high_scores" nor "mode_champions" mapping')
-
-    nv_path, err = _find_nv_file_for_rom(base_dir, rom)
-    if err:
-        raise ValueError(err)
-    assert nv_path is not None
-
-    with open(nv_path, 'rb') as f:
-        raw = f.read()
-
-    decoder = DescriptorDecoder(map_data, repo.platform_for_map(map_data) or {})
-
-    def _fmt_decoded(desc):
-        if not isinstance(desc, dict):
-            return ''
-        val = decoder.decode(raw, desc)
-        if val is None:
-            return ''
-        suffix = desc.get('suffix')
-        if isinstance(val, dict):
-            if {'year', 'month', 'day', 'hour', 'minute'}.issubset(val.keys()):
-                try:
-                    return f"{int(val['year']):04d}-{int(val['month']):02d}-{int(val['day']):02d} {int(val['hour']):02d}:{int(val['minute']):02d}"
-                except Exception:
-                    return str(val)
-            return str(val)
-        try:
-            txt = f'{int(val):,}'
-        except Exception:
-            txt = str(val)
-        if suffix:
-            txt = f'{txt}{suffix}'
-        return txt
-
-    print(f'ROM: {rom}')
-    print(f'NVRAM: {nv_path}')
-    print(f'Map: {rel}')
-    print()
-    if has_high_scores:
-        rows = [('Label', 'Initials', 'Score')]
-        for i, entry in enumerate(high_scores):
-            if not isinstance(entry, dict):
-                continue
-            label = str(entry.get('label') or entry.get('short_label') or f'Entry {i + 1}')
-            initials = _fmt_decoded(entry.get('initials'))
-            score_txt = _fmt_decoded(entry.get('score'))
-            rows.append((label, initials, score_txt))
-        print('High Scores')
-        print(_format_table(rows))
-
-    if has_mode_champions:
-        if has_high_scores:
-            print()
-        rows = [('Label', 'Initials', 'Score', 'Timestamp')]
-        for i, entry in enumerate(mode_champions):
-            if not isinstance(entry, dict):
-                continue
-            label = str(entry.get('label') or entry.get('short_label') or f'Mode {i + 1}')
-            initials = _fmt_decoded(entry.get('initials'))
-            score_txt = _fmt_decoded(entry.get('score'))
-            stamp_txt = _fmt_decoded(entry.get('timestamp'))
-            rows.append((label, initials, score_txt, stamp_txt))
-        print('Mode Champions')
-        print(_format_table(rows))
-
-
-# Fast-path for CLI commands: avoid importing optional runtime dependencies.
 def _run_batocera_popup(title: str, message: str, kind: str = 'info') -> int:
     try:
         import pygame
@@ -344,17 +185,13 @@ def _run_batocera_popup(title: str, message: str, kind: str = 'info') -> int:
     return 0
 
 
-if '--list-roms' in sys.argv[1:] or '--list-highscores' in sys.argv[1:] or '--register' in sys.argv[1:]:
+# Fast-path for registration: avoid importing optional runtime dependencies.
+if '--register' in sys.argv[1:]:
     CONFIG_OVERRIDE_PATH = _extract_config_override(sys.argv[1:])
-    _maps_root = resource_path('nvram-maps')
-    _index_path = os.path.join(_maps_root, 'index.json')
     _cli = argparse.ArgumentParser(description='VPinLeaders Score Sender CLI')
-    _cli.add_argument('--list-roms', action='store_true', help='List supported ROM ids and exit')
-    _cli.add_argument('--list-highscores', metavar='ROM', help='List mapped high scores for a ROM and exit')
     _cli.add_argument('--register', action='store_true', help='Start device registration and write config.ini')
     _cli.add_argument('--machine-id', default='', help='Unique machine id used for registration')
-    _cli.add_argument('--nvrams-folder', default='', help='Base folder used to discover NVRAM files')
-    _cli.add_argument('--base-dir', default='', help='Base folder used to discover NVRAM files')
+    _cli.add_argument('--nvrams-folder', default='', help='Tables folder used to discover score files')
     _cli.add_argument('--config', default='', help='Path to config.ini')
     _args, _ = _cli.parse_known_args(sys.argv[1:])
     try:
@@ -372,17 +209,6 @@ if '--list-roms' in sys.argv[1:] or '--list-highscores' in sys.argv[1:] or '--re
                     api_url=CONFIG_WEBSITE_URL,
                 )
             )
-        if _args.list_roms:
-            _fast_list_roms(_index_path)
-            sys.exit(0)
-        if _args.list_highscores:
-            base_dir = _args.base_dir.strip() or _configured_nvram_base_dir()
-            if not base_dir:
-                raise ValueError(
-                    'Missing NVRAM base dir. Set [nvram].base_dir in config.ini or pass --base-dir.'
-                )
-            _fast_list_highscores(_maps_root, base_dir, _args.list_highscores.strip())
-            sys.exit(0)
     except Exception as _e:
         print(f'ERROR: {_e}')
         sys.exit(1)
@@ -415,6 +241,7 @@ config = configparser.ConfigParser()
 VPINLEADERS_ENABLED = False
 WOVP_ENABLED = False
 ISCORED_ENABLED = False
+VPINPLAY_ENABLED = False
 
 # API/Credentials
 API_URL = ''
@@ -643,7 +470,7 @@ def load_config():
     global API_URL, API_KEY, MACHINE_ID
     global SCREENSHOT_SCREEN_ID, SCREENSHOT_MAX_WIDTH, SCREENSHOT_JPEG_QUALITY
     global MANUAL_SEND_KEYBOARD_BINDING, MANUAL_SEND_JOYSTICK_BUTTONS
-    global VPINLEADERS_ENABLED, WOVP_ENABLED, ISCORED_ENABLED
+    global VPINLEADERS_ENABLED, WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED
     global NVRAM_DIR, LOG_FILE_PATH, CONFIG_PATH
 
     CONFIG_PATH = _config_path()
@@ -683,6 +510,12 @@ def load_config():
         ISCORED_ENABLED = _truthy(config['iscored'].get('enable', 'false'))
     else:
         ISCORED_ENABLED = False
+
+    # ── VPinPlay ─────────────────────────────────────────────────────────
+    if 'vpinplay' in config:
+        VPINPLAY_ENABLED = _truthy(config['vpinplay'].get('enable', 'false'))
+    else:
+        VPINPLAY_ENABLED = False
 
     # ── Screenshot ────────────────────────────────────────────────────────
     if 'screenshot' in config:
@@ -729,6 +562,7 @@ def load_config():
             ('vpinleaders', VPINLEADERS_ENABLED),
             ('wovp', WOVP_ENABLED),
             ('iscored', ISCORED_ENABLED),
+            ('vpinplay', VPINPLAY_ENABLED),
         ) if on
     ) or 'none'
     _log(
@@ -997,6 +831,46 @@ def send_iscored_score(table_name, score, vpx_file: str = '', screenshot_image=N
 
 
 # =========================
+# VPINPLAY SUBMISSION
+# =========================
+def send_vpinplay_score(table_name, score, vpx_file: str = ''):
+    from vpinplay_client import VPinPlayClient
+
+    clean_score = _normalize_score(score)
+    if clean_score <= 0:
+        return
+
+    try:
+        client = VPinPlayClient(CONFIG_PATH)
+        if not client.is_ready():
+            _log('ERROR', 'VPinPlay: not configured (api_url, user_id, initials, or machine_id missing)')
+            show_notification('VPinPlay Send Failed', 'VPinPlay is not configured.', kind='error')
+            return
+
+        effective_path = ''
+        if _nvram_monitor_ref is not None and _nvram_monitor_ref.last_detected_table_path:
+            detected_path = _nvram_monitor_ref.last_detected_table_path
+            if not vpx_file or os.path.basename(detected_path) == vpx_file:
+                effective_path = detected_path
+
+        result = client.submit_score_snapshot(
+            rom=table_name,
+            score=clean_score,
+            vpx_file=vpx_file,
+            vpx_path=effective_path,
+        )
+        if result.get('success'):
+            _log('INFO', f"VPinPlay: score synced for {table_name} ({result.get('message')})")
+            show_notification(f'VPinPlay: {table_name}', clean_score)
+        else:
+            _log('ERROR', f'VPinPlay sync failed: {result}')
+            show_notification('VPinPlay Send Failed', 'VPinPlay sync failed.', kind='error')
+    except Exception as e:
+        _log('ERROR', f'VPinPlay submission failed: {e}')
+        show_notification('VPinPlay Send Failed', str(e), kind='error')
+
+
+# =========================
 # SCORE EVENT PROCESSING
 # =========================
 def handle_game_start_event(rom_name):
@@ -1128,17 +1002,21 @@ def _trigger_manual_send(source):
                 targets.append('wovp')
             if ISCORED_ENABLED:
                 targets.append('iscored')
+            if VPINPLAY_ENABLED:
+                targets.append('vpinplay')
 
             if not targets:
                 _log('WARN', f'{source} pressed but no integration is enabled')
                 show_notification('No Integration', 'Enable at least one integration in Settings.', kind='error')
                 return
 
-            _log('INFO', 'Capturing screenshot for manual send')
-            screenshot = capture_screen(
-                screen_id=SCREENSHOT_SCREEN_ID,
-                max_width=SCREENSHOT_MAX_WIDTH,
-            )
+            screenshot = None
+            if 'vpinleaders' in targets or 'wovp' in targets:
+                _log('INFO', 'Capturing screenshot for manual send')
+                screenshot = capture_screen(
+                    screen_id=SCREENSHOT_SCREEN_ID,
+                    max_width=SCREENSHOT_MAX_WIDTH,
+                )
 
             _log('INFO', f'Manual send fan-out: {",".join(targets)}')
 
@@ -1159,6 +1037,12 @@ def _trigger_manual_send(source):
                     send_iscored_score(rom, score, vpx_file=vpx_file, screenshot_image=screenshot)
                 except Exception as e:
                     _log('ERROR', f'iScored submission raised: {e}')
+
+            if 'vpinplay' in targets:
+                try:
+                    send_vpinplay_score(rom, score, vpx_file=vpx_file)
+                except Exception as e:
+                    _log('ERROR', f'VPinPlay submission raised: {e}')
         finally:
             with _manual_send_lock:
                 _manual_send_inflight = False
@@ -1620,7 +1504,7 @@ def _stop_manual_send_listeners():
 
 
 def _any_integration_enabled() -> bool:
-    return bool(VPINLEADERS_ENABLED or WOVP_ENABLED or ISCORED_ENABLED)
+    return bool(VPINLEADERS_ENABLED or WOVP_ENABLED or ISCORED_ENABLED or VPINPLAY_ENABLED)
 
 
 def _integration_configured(name: str) -> bool:
@@ -1633,6 +1517,13 @@ def _integration_configured(name: str) -> bool:
         return bool(config.get('wovp', 'api_key', fallback='').strip())
     if name == 'iscored':
         return bool(config.get('iscored', 'player_name', fallback='').strip())
+    if name == 'vpinplay':
+        return bool(
+            config.get('vpinplay', 'api_url', fallback='').strip()
+            and config.get('vpinplay', 'user_id', fallback='').strip()
+            and config.get('vpinplay', 'initials', fallback='').strip()
+            and len(config.get('vpinplay', 'machine_id', fallback='').strip()) == 64
+        )
     return False
 
 
@@ -1660,11 +1551,14 @@ def _show_missing_config_and_exit(config_path: str):
 
 
 def _load_wovp_challenges_sync():
+    if not WOVP_ENABLED:
+        _log('INFO', 'WOVP: skipping challenge fetch - integration disabled')
+        return []
     try:
         from wovp_client import WovpClient
         wovp = WovpClient(CONFIG_PATH)
         if not wovp.api_key:
-            _log('WARN', 'WOVP: skipping challenge fetch — no api_key configured in [wovp]')
+            _log('INFO', 'WOVP: skipping challenge fetch - no api_key configured in [wovp]')
             return []
         _log('INFO', 'WOVP: preloading active challenges…')
         challenges = wovp.search_challenges()
@@ -1676,11 +1570,14 @@ def _load_wovp_challenges_sync():
 
 
 def _load_iscored_games_sync():
+    if not ISCORED_ENABLED:
+        _log('INFO', 'iScored: skipping games fetch - integration disabled')
+        return []
     try:
         from iscored_client import IScoredClient
         iscored = IScoredClient(CONFIG_PATH)
         if not iscored.player_name:
-            _log('WARN', 'iScored: skipping games fetch — no player_name configured in [iscored]')
+            _log('INFO', 'iScored: skipping games fetch - no player_name configured in [iscored]')
             return []
         _log('INFO', f'iScored: preloading games from {len(iscored.room_urls)} room(s)…')
         games = iscored.list_all_games(request_timeout=10)
@@ -1775,6 +1672,11 @@ def _run_desktop_app():
             self.act_iscored_enable.triggered.connect(lambda: self._toggle_integration('iscored'))
             self.menu.addAction(self.act_iscored_enable)
 
+            self.act_vpinplay_enable = QAction('Enable VPinPlay', self.menu)
+            self.act_vpinplay_enable.setCheckable(True)
+            self.act_vpinplay_enable.triggered.connect(lambda: self._toggle_integration('vpinplay'))
+            self.menu.addAction(self.act_vpinplay_enable)
+
             self.menu.addSeparator()
 
             # ── Selection actions ──────────────────────────────────────
@@ -1825,6 +1727,10 @@ def _run_desktop_app():
             self.act_iscored_enable.setText(
                 'iScored Enabled' if ISCORED_ENABLED else 'Enable iScored'
             )
+            self.act_vpinplay_enable.setChecked(VPINPLAY_ENABLED)
+            self.act_vpinplay_enable.setText(
+                'VPinPlay Enabled' if VPINPLAY_ENABLED else 'Enable VPinPlay'
+            )
 
             # WoVP challenges: accessible whenever api_key is present so the user
             # can pre-configure a challenge without having to enable WoVP first.
@@ -1845,6 +1751,7 @@ def _run_desktop_app():
                     ('VPinLeaders', VPINLEADERS_ENABLED),
                     ('WoVP', WOVP_ENABLED),
                     ('iScored', ISCORED_ENABLED),
+                    ('VPinPlay', VPINPLAY_ENABLED),
                 ) if on
             ]
             if enabled_labels:
@@ -1859,12 +1766,13 @@ def _run_desktop_app():
             QTimer.singleShot(150, self.update_menu_state)
 
         def _toggle_integration(self, name):
-            global VPINLEADERS_ENABLED, WOVP_ENABLED, ISCORED_ENABLED
+            global VPINLEADERS_ENABLED, WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED
 
             currently_enabled = {
                 'vpinleaders': VPINLEADERS_ENABLED,
                 'wovp': WOVP_ENABLED,
                 'iscored': ISCORED_ENABLED,
+                'vpinplay': VPINPLAY_ENABLED,
             }.get(name)
             if currently_enabled is None:
                 return
@@ -1884,6 +1792,9 @@ def _run_desktop_app():
             elif name == 'iscored':
                 ISCORED_ENABLED = not ISCORED_ENABLED
                 new_value = ISCORED_ENABLED
+            elif name == 'vpinplay':
+                VPINPLAY_ENABLED = not VPINPLAY_ENABLED
+                new_value = VPINPLAY_ENABLED
             else:
                 return
 
@@ -1894,6 +1805,10 @@ def _run_desktop_app():
 
             _refresh_manual_send_listeners()
             _log('INFO', f'Integration {name} {"enabled" if new_value else "disabled"}')
+            if new_value and name == 'wovp':
+                _refresh_wovp_challenges_bg()
+            elif new_value and name == 'iscored':
+                _refresh_iscored_games_bg()
             self._defer_menu_update()
 
         def _open_settings_dialog(self):
@@ -1910,6 +1825,14 @@ def _run_desktop_app():
                 load_config()
                 self._populate_screen_actions()
                 _refresh_manual_send_listeners()
+                if WOVP_ENABLED:
+                    _refresh_wovp_challenges_bg()
+                else:
+                    self._apply_wovp_challenges([])
+                if ISCORED_ENABLED:
+                    _refresh_iscored_games_bg()
+                else:
+                    self._apply_iscored_games([])
                 _log('INFO', 'Settings updated; config reloaded')
             self._defer_menu_update()
 
@@ -2105,6 +2028,8 @@ def _run_desktop_app():
                     parts.append(f"WoVP: {name or 'no challenge'}")
                 if ISCORED_ENABLED:
                     parts.append('iScored')
+                if VPINPLAY_ENABLED:
+                    parts.append('VPinPlay')
                 self.setToolTip('VPinLeaders Client | ' + (', '.join(parts) or 'idle'))
             except Exception:
                 pass
@@ -2146,6 +2071,7 @@ def _run_desktop_app():
             ('vpinleaders', VPINLEADERS_ENABLED),
             ('wovp', WOVP_ENABLED),
             ('iscored', ISCORED_ENABLED),
+            ('vpinplay', VPINPLAY_ENABLED),
         ) if on
     ) or 'none'
     _log(

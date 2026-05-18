@@ -32,11 +32,7 @@ class WovpClient:
         self.config = configparser.ConfigParser()
         self.config.read(config_path)
 
-        try:
-            self.api_key = self.config.get("wovp", "api_key")
-        except (configparser.NoSectionError, configparser.NoOptionError) as e:
-            logger.warning(f"WOVP configuration incomplete in config.ini: {e}")
-            self.api_key = ""
+        self.api_key = self.config.get("wovp", "api_key", fallback="").strip()
 
         self.headers = {
             "X-Client-ID": "vpinleaders-client",

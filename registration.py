@@ -103,7 +103,7 @@ def register(machine_id: str, config_path: str, example_path: str, nvram_base_di
 
     resolved_nvram_dir = default_nvram_base_dir(nvram_base_dir)
     if not resolved_nvram_dir:
-        print("Error: --nvrams-folder is required unless running on Batocera.")
+        print("Error: --nvrams-folder TABLES_FOLDER is required unless running on Batocera.")
         return 1
 
     try:
@@ -181,7 +181,7 @@ def register(machine_id: str, config_path: str, example_path: str, nvram_base_di
 
             print("\nRegistration complete.")
             print(f"Config saved to: {written_path}")
-            print(f"NVRAM base dir: {resolved_nvram_dir}")
+            print(f"Tables folder: {resolved_nvram_dir}")
             return 0
 
         if state == "expired":

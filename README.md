@@ -18,6 +18,9 @@ You need:
 - A VPX 10.8.1 setup 
 - The latest GitHub Actions artifact for your operating system
 
+Your tables folder should follow the
+[VPX 10.8.1 File Layout](https://github.com/vpinball/vpinball/blob/master/docs/FileLayout.md).
+
 Create your account first:
 
 - [https://www.vpinleaders.com](https://www.vpinleaders.com)
@@ -117,11 +120,13 @@ WoVP lets the client submit scores to active challenges.
 
 To configure it:
 
-1. Open the client tray menu.
-2. Choose `Settings`.
-3. Enable `WoVP`.
-4. Paste your WoVP API key.
-5. Save the settings.
+1. Sign in at [worldofvirtualpinball.com](https://worldofvirtualpinball.com/en).
+2. Create a WoVP API key in your account settings.
+3. Open the client tray menu.
+4. Choose `Settings`.
+5. Enable `WoVP`.
+6. Paste your WoVP API key.
+7. Save the settings.
 
 When WoVP is enabled, the client loads active challenges at startup and shows
 them in the tray menu. Select the challenge you want to submit to before
@@ -136,24 +141,18 @@ iScored lets the client submit scores to an iScored gameroom.
 
 To configure it:
 
-1. In iScored, enable API access in your gameroom settings.
+1. In iScored, make sure your gameroom allows score submissions.
 2. Open the client tray menu.
 3. Choose `Settings`.
 4. Enable `iScored`.
 5. Enter your iScored username.
 6. Save the settings.
 
-Your iScored username is also your API gameroom name. For example, username
-`Username` maps to:
-
-`https://www.iscored.info/api/Username`
-
 After iScored is configured, the client loads your gameroom games and shows
 them under `iScored > Games` in the tray menu. Select the game you want to
 submit to before sending a score.
 
-iScored submissions use the selected gameroom and game ID. If a screenshot is
-available, the client sends it as a photo with the score.
+iScored submissions use the selected gameroom and game.
 
 
 ## Source Run
@@ -162,7 +161,7 @@ If you want to run from source instead of the packaged artifacts:
 
 ```bash
 pip install -r requirements.txt
-python3 main.py --register --machine-id YOUR_MACHINE_ID
+python3 main.py --register --machine-id YOUR_MACHINE_ID --nvrams-folder /Your/tables/folder
 python3 main.py
 ```
 

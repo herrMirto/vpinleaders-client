@@ -22,6 +22,7 @@ import io
 import os
 import threading
 import time
+import uuid
 from typing import Optional
 
 import requests
@@ -53,6 +54,7 @@ from PyQt6.QtWidgets import (
 )
 
 DEFAULT_API_URL = "https://www.vpinleaders.com"
+DEFAULT_VPINPLAY_API_URL = "http://localhost:8888"
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +80,54 @@ def _ensure_section(cp: configparser.ConfigParser, name: str) -> None:
 
 def _truthy(value: str) -> bool:
     return str(value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _build_page_layout(page: QWizardPage, title: str, subtitle: str) -> QVBoxLayout:
+    root = QVBoxLayout(page)
+    root.setContentsMargins(0, 0, 0, 0)
+    root.setSpacing(0)
+
+    header = QFrame()
+    header.setObjectName("wizardHeader")
+    header.setStyleSheet(
+        "QFrame#wizardHeader {"
+        "background: #fbfbfb;"
+        "border-bottom: 1px solid #c7c7c7;"
+        "}"
+    )
+    header_layout = QVBoxLayout(header)
+    header_layout.setContentsMargins(24, 18, 24, 18)
+    header_layout.setSpacing(6)
+
+    title_label = QLabel(title)
+    title_font = title_label.font()
+    title_font.setPointSize(title_font.pointSize() + 4)
+    title_font.setBold(True)
+    title_label.setFont(title_font)
+
+    subtitle_label = QLabel(subtitle)
+    subtitle_label.setWordWrap(True)
+
+    header_layout.addWidget(title_label)
+    header_layout.addWidget(subtitle_label)
+    root.addWidget(header)
+
+    body = QVBoxLayout()
+    body.setContentsMargins(24, 28, 24, 24)
+    body.setSpacing(10)
+    root.addLayout(body, 1)
+    return body
+
+
+def _add_horizontal_separator(layout: QVBoxLayout) -> None:
+    line = QFrame()
+    line.setFrameShape(QFrame.Shape.HLine)
+    line.setFrameShadow(QFrame.Shadow.Sunken)
+    layout.addWidget(line)
+
+
+def _generate_vpinplay_machine_id() -> str:
+    return uuid.uuid4().hex + uuid.uuid4().hex
 
 
 def _qpixmap_from_pil(pil_image) -> QPixmap:
@@ -171,7 +221,7 @@ class _PairingWorker(QObject):
                 machine_id = str(status.get("machine_id") or self.machine_id).strip()
                 api_key = str(status.get("api_key") or "").strip()
                 if not api_key:
-                    self.failed.emit("Server approved pairing but did not return an API key.")
+                    self.failed.emit("Registration was approved, but the client did not receive the final setup details.")
                     return
                 self.approved.emit(machine_id, api_key)
                 return
@@ -187,13 +237,11 @@ class _PairingWorker(QObject):
 class _WelcomePage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("Welcome to VPinLeaders Client")
-        self.setSubTitle("Let's get you set up.")
-        layout = QVBoxLayout(self)
+        layout = _build_page_layout(self, "Welcome to VPinLeaders Client", "Let's get you set up.")
         layout.addWidget(QLabel(
             "This wizard will configure the client for the first time.\n\n"
             "You'll choose which leaderboards to send your scores to and provide\n"
-            "the credentials for each. Everything can be changed later from the\n"
+            "the setup details for each. Everything can be changed later from the\n"
             "tray icon (Settings…).\n\n"
             "Click Next to continue."
         ))
@@ -202,15 +250,15 @@ class _WelcomePage(QWizardPage):
 class _NvramFolderPage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("VPX nvram folder")
-        self.setSubTitle("Tell the client where your nvram files live.")
-
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(
-            "VPinLeaders Client reads scores from the nvram files written by\n"
-            "Visual Pinball X. Pick the parent directory containing the table\n"
-            "subfolders (typically the one with pinmame/nvram/*.nv inside)."
-        ))
+        layout = _build_page_layout(self, "Tables Folder", "Choose your Visual Pinball tables folder.")
+        info = QLabel(
+            "Pick the folder that contains your VPX tables. It should follow the "
+            "<a href='https://github.com/vpinball/vpinball/blob/master/docs/FileLayout.md'>"
+            "VPX 10.8.1 File Layout</a>."
+        )
+        info.setWordWrap(True)
+        info.setOpenExternalLinks(True)
+        layout.addWidget(info)
 
         row = QHBoxLayout()
         self.path_edit = QLineEdit()
@@ -224,7 +272,7 @@ class _NvramFolderPage(QWizardPage):
         layout.addStretch(1)
 
     def _browse(self) -> None:
-        d = QFileDialog.getExistingDirectory(self, "Select nvram base directory")
+        d = QFileDialog.getExistingDirectory(self, "Select tables folder")
         if d:
             self.path_edit.setText(d)
 
@@ -238,12 +286,9 @@ class _NvramFolderPage(QWizardPage):
 class _IntegrationPickerPage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("Choose integrations")
-        self.setSubTitle("Pick one or more leaderboards. You can change this later.")
-
-        layout = QVBoxLayout(self)
+        layout = _build_page_layout(self, "Choose integrations", "Pick one or more leaderboards. You can change this later.")
         self.cb_vpin = QCheckBox("VPinLeaders (vpinleaders.com) — pairs this device with your account")
-        self.cb_wovp = QCheckBox("WoVP (World of Virtual Pinball) — uses an API key from wovp.com")
+        self.cb_wovp = QCheckBox("WoVP (World of Virtual Pinball) — submits to active challenges")
         self.cb_isc = QCheckBox("iScored — submits to your iScored gameroom")
 
         for cb in (self.cb_vpin, self.cb_wovp, self.cb_isc):
@@ -276,16 +321,13 @@ class _VPinLeadersPage(QWizardPage):
 
     def __init__(self, default_api_url: str = DEFAULT_API_URL):
         super().__init__()
-        self.setTitle("VPinLeaders setup")
-        self.setSubTitle("Pair this machine with your VPinLeaders account.")
-
         self._api_url = default_api_url
         self._worker: Optional[_PairingWorker] = None
         self._approved = False
         self.machine_id: str = ""
         self.api_key: str = ""
 
-        layout = QVBoxLayout(self)
+        layout = _build_page_layout(self, "VPinLeaders setup", "Pair this machine with your VPinLeaders account.")
         layout.addWidget(QLabel(
             "1. Make sure you have an account at https://www.vpinleaders.com\n"
             "2. Pick a name for this machine (e.g. \"living-room-cab\").\n"
@@ -296,7 +338,7 @@ class _VPinLeadersPage(QWizardPage):
         form = QFormLayout()
         self.machine_edit = QLineEdit()
         self.machine_edit.setPlaceholderText("machine name (letters, digits, dashes)")
-        form.addRow("Machine ID:", self.machine_edit)
+        form.addRow("Machine name:", self.machine_edit)
         layout.addLayout(form)
 
         btn_row = QHBoxLayout()
@@ -328,7 +370,7 @@ class _VPinLeadersPage(QWizardPage):
     def _start_pairing(self) -> None:
         mid = self.machine_edit.text().strip()
         if not mid:
-            QMessageBox.warning(self, "Machine ID required", "Type a machine name first.")
+            QMessageBox.warning(self, "Machine name required", "Type a machine name first.")
             return
 
         self._approved = False
@@ -380,14 +422,14 @@ class _VPinLeadersPage(QWizardPage):
         self.api_key = api_key
         self.progress.hide()
         self.status_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.status_label.setText(f"✓ Paired successfully as '{machine_id}'.")
+        self.status_label.setText(f"Paired successfully as '{machine_id}'.")
         self.cancel_btn.setEnabled(False)
         self.completeChanged.emit()
 
     def _on_failed(self, message: str) -> None:
         self.progress.hide()
         self.status_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.status_label.setText(f"✗ {message}")
+        self.status_label.setText(message)
         self.start_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
         self.machine_edit.setEnabled(True)
@@ -414,23 +456,25 @@ class _VPinLeadersPage(QWizardPage):
 class _WoVPPage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("WoVP setup")
-        self.setSubTitle("Provide your WoVP API key.")
-
-        layout = QVBoxLayout(self)
+        layout = _build_page_layout(self, "WoVP setup", "Provide your WoVP API key.")
         layout.addWidget(QLabel(
-            "1. Sign up / sign in at https://wovp.com\n"
+            "1. Sign up / sign in at https://worldofvirtualpinball.com/en\n"
             "2. Generate an API key in your account settings.\n"
             "3. Paste it below. The challenge to play against can be picked\n"
             "   later from the tray menu (WoVP ▸ Challenges)."
         ))
 
-        form = QFormLayout()
+        layout.addSpacing(12)
+        _add_horizontal_separator(layout)
+        layout.addSpacing(12)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("API key:"))
         self.key_edit = QLineEdit()
         self.key_edit.setPlaceholderText("WoVP API key")
         self.key_edit.textChanged.connect(self.completeChanged)
-        form.addRow("API key:", self.key_edit)
-        layout.addLayout(form)
+        row.addWidget(self.key_edit, 1)
+        layout.addLayout(row)
         layout.addStretch(1)
 
     def isComplete(self) -> bool:
@@ -444,23 +488,24 @@ class _WoVPPage(QWizardPage):
 class _IScoredPage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("iScored setup")
-        self.setSubTitle("Tell the client your iScored username.")
-
-        layout = QVBoxLayout(self)
+        layout = _build_page_layout(self, "iScored setup", "Tell the client your iScored username.")
         layout.addWidget(QLabel(
             "1. Create or sign in to an iScored gameroom at https://iscored.info\n"
-            "2. Enable API access in the gameroom settings.\n"
-            "3. Enter your iScored username. The API gameroom is derived from\n"
-            "   the same username."
+            "2. Make sure your gameroom allows score submissions.\n"
+            "3. Enter your iScored username."
         ))
 
-        form = QFormLayout()
+        layout.addSpacing(12)
+        _add_horizontal_separator(layout)
+        layout.addSpacing(12)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Username:"))
         self.player_edit = QLineEdit()
         self.player_edit.setPlaceholderText("e.g. Username")
         self.player_edit.textChanged.connect(self.completeChanged)
-        form.addRow("Username:", self.player_edit)
-        layout.addLayout(form)
+        row.addWidget(self.player_edit, 1)
+        layout.addLayout(row)
         layout.addStretch(1)
 
     def isComplete(self) -> bool:
@@ -471,13 +516,57 @@ class _IScoredPage(QWizardPage):
         return self.player_edit.text().strip()
 
 
+class _VPinPlayPage(QWizardPage):
+    def __init__(self):
+        super().__init__()
+        layout = _build_page_layout(self, "VPinPlay setup", "Sync scores to your own local or network VPinPlay instance.")
+        form = QFormLayout()
+        self.api_url_edit = QLineEdit(DEFAULT_VPINPLAY_API_URL)
+        self.user_id_edit = QLineEdit()
+        self.initials_edit = QLineEdit()
+        self.machine_id_edit = QLineEdit(_generate_vpinplay_machine_id())
+        self.machine_id_edit.setReadOnly(True)
+
+        for edit in (self.api_url_edit, self.user_id_edit, self.initials_edit):
+            edit.textChanged.connect(self.completeChanged)
+
+        form.addRow("VPinPlay URL:", self.api_url_edit)
+        form.addRow("User ID:", self.user_id_edit)
+        form.addRow("Initials:", self.initials_edit)
+        form.addRow("Machine ID:", self.machine_id_edit)
+        layout.addLayout(form)
+        layout.addStretch(1)
+
+    def isComplete(self) -> bool:
+        return bool(
+            self.api_url_edit.text().strip()
+            and self.user_id_edit.text().strip()
+            and self.initials_edit.text().strip()
+            and len(self.machine_id_edit.text().strip()) == 64
+        )
+
+    @property
+    def api_url(self) -> str:
+        return self.api_url_edit.text().strip() or DEFAULT_VPINPLAY_API_URL
+
+    @property
+    def user_id(self) -> str:
+        return self.user_id_edit.text().strip()
+
+    @property
+    def initials(self) -> str:
+        return self.initials_edit.text().strip()
+
+    @property
+    def machine_id(self) -> str:
+        value = self.machine_id_edit.text().strip()
+        return value if len(value) == 64 else _generate_vpinplay_machine_id()
+
+
 class _CapturePage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("Capture & hotkey")
-        self.setSubTitle("Choose which display to capture and the manual-send hotkey.")
-
-        layout = QVBoxLayout(self)
+        layout = _build_page_layout(self, "Capture & hotkey", "Choose which display to capture and the manual-send hotkey.")
         layout.addWidget(QLabel(
             "Screenshots are taken whenever you trigger a manual send. They\n"
             "are attached to VPinLeaders / WoVP submissions. Pick the display\n"
@@ -527,10 +616,7 @@ class _CapturePage(QWizardPage):
 class _DonePage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("All set")
-        self.setSubTitle("Click Finish to start the client.")
-
-        layout = QVBoxLayout(self)
+        layout = _build_page_layout(self, "All set", "Click Finish to start the client.")
         self.summary = QLabel("Reviewing your selections…")
         self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
@@ -550,7 +636,7 @@ class _DonePage(QWizardPage):
         if not bullets:
             bullets.append("• No integrations enabled. You can enable them later "
                            "from the tray icon → Settings…")
-        bullets.append(f"• nvram folder: {wiz.nvram.value()}")
+        bullets.append(f"• Tables folder: {wiz.nvram.value()}")
         self.summary.setText("\n".join(bullets))
 
 
@@ -774,6 +860,24 @@ class SettingsDialog(QDialog):
         self.iscored_player = QLineEdit()
         isc_form.addRow("Username:", self.iscored_player)
         layout.addWidget(isc_box)
+        add_separator()
+
+        # VPinPlay
+        vpinplay_box = QGroupBox("VPinPlay")
+        style_integration_box(vpinplay_box)
+        vpinplay_form = QFormLayout(vpinplay_box)
+        self.cb_vpinplay = QCheckBox("Enable VPinPlay")
+        vpinplay_form.addRow(self.cb_vpinplay)
+        self.vpinplay_api_url = QLineEdit()
+        vpinplay_form.addRow("VPinPlay URL:", self.vpinplay_api_url)
+        self.vpinplay_user_id = QLineEdit()
+        vpinplay_form.addRow("User ID:", self.vpinplay_user_id)
+        self.vpinplay_initials = QLineEdit()
+        vpinplay_form.addRow("Initials:", self.vpinplay_initials)
+        self.vpinplay_machine_id = QLineEdit()
+        self.vpinplay_machine_id.setReadOnly(True)
+        vpinplay_form.addRow("Machine ID:", self.vpinplay_machine_id)
+        layout.addWidget(vpinplay_box)
 
         layout.addStretch(1)
         self.tabs.addTab(page, "Integrations")
@@ -811,7 +915,16 @@ class SettingsDialog(QDialog):
         nvram_browse.clicked.connect(self._browse_nvram)
         nvram_row.addWidget(self.nvram_edit, 1)
         nvram_row.addWidget(nvram_browse)
-        form.addRow("nvram base dir:", nvram_row)
+        form.addRow("Tables folder:", nvram_row)
+
+        layout_note = QLabel(
+            "Use the folder that contains your VPX tables. It should follow the "
+            "<a href='https://github.com/vpinball/vpinball/blob/master/docs/FileLayout.md'>"
+            "VPX 10.8.1 File Layout</a>."
+        )
+        layout_note.setWordWrap(True)
+        layout_note.setOpenExternalLinks(True)
+        form.addRow("", layout_note)
 
         self.log_edit = QLineEdit()
         form.addRow("Log file:", self.log_edit)
@@ -819,7 +932,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(page, "Paths")
 
     def _browse_nvram(self) -> None:
-        d = QFileDialog.getExistingDirectory(self, "Select nvram base directory", self.nvram_edit.text())
+        d = QFileDialog.getExistingDirectory(self, "Select tables folder", self.nvram_edit.text())
         if d:
             self.nvram_edit.setText(d)
 
@@ -835,6 +948,15 @@ class SettingsDialog(QDialog):
 
         self.cb_iscored.setChecked(_truthy(cp.get("iscored", "enable", fallback="false")))
         self.iscored_player.setText(cp.get("iscored", "player_name", fallback=""))
+
+        self.cb_vpinplay.setChecked(_truthy(cp.get("vpinplay", "enable", fallback="false")))
+        self.vpinplay_api_url.setText(cp.get("vpinplay", "api_url", fallback=DEFAULT_VPINPLAY_API_URL))
+        self.vpinplay_user_id.setText(cp.get("vpinplay", "user_id", fallback=""))
+        self.vpinplay_initials.setText(cp.get("vpinplay", "initials", fallback=""))
+        machine_id = cp.get("vpinplay", "machine_id", fallback="").strip()
+        if len(machine_id) != 64:
+            machine_id = _generate_vpinplay_machine_id()
+        self.vpinplay_machine_id.setText(machine_id)
 
         try:
             sid = int(cp.get("screenshot", "screen_to_capture", fallback="0") or "0")
@@ -876,6 +998,14 @@ class SettingsDialog(QDialog):
         cp["iscored"]["player_name"] = self.iscored_player.text().strip()
         cp["iscored"].pop("room_urls", None)
         cp["iscored"].pop("gamerooms", None)
+
+        _ensure_section(cp, "vpinplay")
+        cp["vpinplay"]["enable"] = "true" if self.cb_vpinplay.isChecked() else "false"
+        cp["vpinplay"]["api_url"] = self.vpinplay_api_url.text().strip() or DEFAULT_VPINPLAY_API_URL
+        cp["vpinplay"]["user_id"] = self.vpinplay_user_id.text().strip()
+        cp["vpinplay"]["initials"] = self.vpinplay_initials.text().strip()
+        machine_id = self.vpinplay_machine_id.text().strip()
+        cp["vpinplay"]["machine_id"] = machine_id if len(machine_id) == 64 else _generate_vpinplay_machine_id()
 
         _ensure_section(cp, "screenshot")
         cp["screenshot"]["screen_to_capture"] = str(int(self.screen_combo.currentData() or 0))
@@ -938,6 +1068,16 @@ class IntegrationSetupWizard(QWizard):
             self.setWindowTitle("VPinLeaders Client - iScored Setup")
             self.page = _IScoredPage()
             self.page.player_edit.setText(cp.get("iscored", "player_name", fallback=""))
+        elif integration == "vpinplay":
+            self.setWindowTitle("VPinLeaders Client - VPinPlay Setup")
+            self.page = _VPinPlayPage()
+            self.page.api_url_edit.setText(cp.get("vpinplay", "api_url", fallback=DEFAULT_VPINPLAY_API_URL))
+            self.page.user_id_edit.setText(cp.get("vpinplay", "user_id", fallback=""))
+            self.page.initials_edit.setText(cp.get("vpinplay", "initials", fallback=""))
+            machine_id = cp.get("vpinplay", "machine_id", fallback="").strip()
+            self.page.machine_id_edit.setText(
+                machine_id if len(machine_id) == 64 else _generate_vpinplay_machine_id()
+            )
         else:
             raise ValueError(f"Unknown integration: {integration}")
 
@@ -979,6 +1119,15 @@ class IntegrationSetupWizard(QWizard):
             cp["iscored"]["player_name"] = self.page.player_name
             cp["iscored"].pop("room_urls", None)
             cp["iscored"].pop("gamerooms", None)
+        elif self.integration == "vpinplay":
+            if not isinstance(self.page, _VPinPlayPage) or not self.page.isComplete():
+                raise ValueError("VPinPlay URL, user ID, and initials are required.")
+            _ensure_section(cp, "vpinplay")
+            cp["vpinplay"]["enable"] = "true"
+            cp["vpinplay"]["api_url"] = self.page.api_url
+            cp["vpinplay"]["user_id"] = self.page.user_id
+            cp["vpinplay"]["initials"] = self.page.initials
+            cp["vpinplay"]["machine_id"] = self.page.machine_id
 
         _write_config(cp, self.config_path)
 
@@ -1000,6 +1149,7 @@ def _ensure_qapplication() -> QApplication:
     if app is None:
         import sys
         app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
     _qapp_ref = app
     return app
 
