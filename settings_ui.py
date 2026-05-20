@@ -11,23 +11,16 @@ Two public entry points:
         if changes were saved, False otherwise.
 
 The module is self-contained: it uses configparser to read/write the ini file
-directly, and only imports from the rest of the project lazily (notably
-``registration`` for the device-pairing API calls).
+directly.
 """
 
 from __future__ import annotations
 
 import configparser
-import io
 import os
-import threading
-import time
-import uuid
 from typing import Optional
 
-import requests
-from PyQt6.QtCore import Qt, QObject, QTimer, pyqtSignal
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -42,10 +35,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPlainTextEdit,
-    QProgressBar,
     QPushButton,
-    QSpinBox,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -53,7 +44,8 @@ from PyQt6.QtWidgets import (
     QWizardPage,
 )
 
-DEFAULT_API_URL = "https://www.vpinleaders.com"
+from vpinplay_client import generate_machine_id, load_vpinfe_vpinplay_config, normalize_api_url
+
 DEFAULT_VPINPLAY_API_URL = "http://localhost:8888"
 
 
@@ -80,6 +72,26 @@ def _ensure_section(cp: configparser.ConfigParser, name: str) -> None:
 
 def _truthy(value: str) -> bool:
     return str(value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _valid_vpinplay_machine_id(value: str) -> bool:
+    return len(str(value or "").strip()) >= 64
+
+
+def _machine_id_or_generated(value: str) -> str:
+    value = str(value or "").strip()
+    return value if _valid_vpinplay_machine_id(value) else generate_machine_id()
+
+
+def _vpinplay_values_from_vpinfe_or_config(cp: configparser.ConfigParser) -> dict:
+    imported = load_vpinfe_vpinplay_config()
+    return {
+        "api_url": imported.get("api_url") or normalize_api_url(cp.get("vpinplay", "api_url", fallback=DEFAULT_VPINPLAY_API_URL)),
+        "user_id": imported.get("user_id") or cp.get("vpinplay", "user_id", fallback="").strip(),
+        "initials": imported.get("initials") or cp.get("vpinplay", "initials", fallback="").strip(),
+        "machine_id": _machine_id_or_generated(imported.get("machine_id") or cp.get("vpinplay", "machine_id", fallback="")),
+        "source_path": imported.get("source_path", ""),
+    }
 
 
 def _build_page_layout(page: QWizardPage, title: str, subtitle: str) -> QVBoxLayout:
@@ -124,110 +136,6 @@ def _add_horizontal_separator(layout: QVBoxLayout) -> None:
     line.setFrameShape(QFrame.Shape.HLine)
     line.setFrameShadow(QFrame.Shadow.Sunken)
     layout.addWidget(line)
-
-
-def _generate_vpinplay_machine_id() -> str:
-    return uuid.uuid4().hex + uuid.uuid4().hex
-
-
-def _qpixmap_from_pil(pil_image) -> QPixmap:
-    """Convert a Pillow image (e.g. from qrcode) into a QPixmap via PNG bytes."""
-    buf = io.BytesIO()
-    pil_image.save(buf, format="PNG")
-    qimg = QImage.fromData(buf.getvalue(), "PNG")
-    return QPixmap.fromImage(qimg)
-
-
-# ---------------------------------------------------------------------------
-# VPinLeaders pairing worker
-# ---------------------------------------------------------------------------
-
-class _PairingWorker(QObject):
-    """Drives the /device/pair/start + /device/pair/status polling loop."""
-
-    started = pyqtSignal(str, str)        # pairing_url, pairing_code
-    qr_ready = pyqtSignal(QPixmap)
-    approved = pyqtSignal(str, str)        # machine_id, api_key
-    failed = pyqtSignal(str)
-    expired = pyqtSignal()
-
-    def __init__(self, machine_id: str, api_url: str):
-        super().__init__()
-        self.machine_id = machine_id.strip()
-        self.api_url = api_url.rstrip("/")
-        self._stop = threading.Event()
-        self._thread: Optional[threading.Thread] = None
-
-    def start(self) -> None:
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
-
-    def _run(self) -> None:
-        try:
-            api_base = self.api_url + "/api"
-            resp = requests.post(
-                f"{api_base}/device/pair/start",
-                json={"machine_id": self.machine_id},
-                timeout=10,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            pairing_url = data["pairing_url"]
-            pairing_code = data["pairing_code"]
-            polling_token = data["polling_token"]
-        except Exception as exc:
-            self.failed.emit(f"Could not start pairing: {exc}")
-            return
-
-        self.started.emit(pairing_url, pairing_code)
-
-        try:
-            import qrcode
-            qr = qrcode.QRCode(border=2, box_size=6)
-            qr.add_data(pairing_url)
-            qr.make()
-            pixmap = _qpixmap_from_pil(qr.make_image(fill_color="black", back_color="white"))
-            self.qr_ready.emit(pixmap)
-        except Exception:
-            pass
-
-        while not self._stop.is_set():
-            time.sleep(2.5)
-            if self._stop.is_set():
-                return
-            try:
-                status_resp = requests.post(
-                    f"{api_base}/device/pair/status",
-                    json={"polling_token": polling_token},
-                    timeout=10,
-                )
-                status_resp.raise_for_status()
-                status = status_resp.json()
-            except requests.exceptions.HTTPError as exc:
-                if exc.response is not None and exc.response.status_code == 404:
-                    self.failed.emit("Pairing session not found.")
-                    return
-                continue
-            except Exception:
-                continue
-
-            state = status.get("status")
-            if state == "pending":
-                continue
-            if state == "approved":
-                machine_id = str(status.get("machine_id") or self.machine_id).strip()
-                api_key = str(status.get("api_key") or "").strip()
-                if not api_key:
-                    self.failed.emit("Registration was approved, but the client did not receive the final setup details.")
-                    return
-                self.approved.emit(machine_id, api_key)
-                return
-            if state == "expired":
-                self.expired.emit()
-                return
 
 
 # ---------------------------------------------------------------------------
@@ -287,11 +195,11 @@ class _IntegrationPickerPage(QWizardPage):
     def __init__(self):
         super().__init__()
         layout = _build_page_layout(self, "Choose integrations", "Pick one or more leaderboards. You can change this later.")
-        self.cb_vpin = QCheckBox("VPinLeaders (vpinleaders.com) — pairs this device with your account")
+        self.cb_vpinplay = QCheckBox("VPinPlay — syncs to your own local or network instance")
         self.cb_wovp = QCheckBox("WoVP (World of Virtual Pinball) — submits to active challenges")
         self.cb_isc = QCheckBox("iScored — submits to your iScored gameroom")
 
-        for cb in (self.cb_vpin, self.cb_wovp, self.cb_isc):
+        for cb in (self.cb_vpinplay, self.cb_wovp, self.cb_isc):
             cb.toggled.connect(self.completeChanged)
             layout.addWidget(cb)
 
@@ -304,10 +212,6 @@ class _IntegrationPickerPage(QWizardPage):
         return True
 
     @property
-    def want_vpin(self) -> bool:
-        return self.cb_vpin.isChecked()
-
-    @property
     def want_wovp(self) -> bool:
         return self.cb_wovp.isChecked()
 
@@ -315,142 +219,9 @@ class _IntegrationPickerPage(QWizardPage):
     def want_iscored(self) -> bool:
         return self.cb_isc.isChecked()
 
-
-class _VPinLeadersPage(QWizardPage):
-    """Captures machine_id and runs the pairing dance."""
-
-    def __init__(self, default_api_url: str = DEFAULT_API_URL):
-        super().__init__()
-        self._api_url = default_api_url
-        self._worker: Optional[_PairingWorker] = None
-        self._approved = False
-        self.machine_id: str = ""
-        self.api_key: str = ""
-
-        layout = _build_page_layout(self, "VPinLeaders setup", "Pair this machine with your VPinLeaders account.")
-        layout.addWidget(QLabel(
-            "1. Make sure you have an account at https://www.vpinleaders.com\n"
-            "2. Pick a name for this machine (e.g. \"living-room-cab\").\n"
-            "3. Click Start Pairing, then scan the QR code or open the URL on\n"
-            "   any device signed into your account to approve.\n"
-        ))
-
-        form = QFormLayout()
-        self.machine_edit = QLineEdit()
-        self.machine_edit.setPlaceholderText("machine name (letters, digits, dashes)")
-        form.addRow("Machine name:", self.machine_edit)
-        layout.addLayout(form)
-
-        btn_row = QHBoxLayout()
-        self.start_btn = QPushButton("Start Pairing")
-        self.start_btn.clicked.connect(self._start_pairing)
-        self.cancel_btn = QPushButton("Cancel")
-        self.cancel_btn.clicked.connect(self._cancel_pairing)
-        self.cancel_btn.setEnabled(False)
-        btn_row.addWidget(self.start_btn)
-        btn_row.addWidget(self.cancel_btn)
-        btn_row.addStretch(1)
-        layout.addLayout(btn_row)
-
-        self.qr_label = QLabel()
-        self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.qr_label.setMinimumHeight(220)
-        layout.addWidget(self.qr_label)
-
-        self.status_label = QLabel("Not yet paired.")
-        self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
-
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 0)
-        self.progress.hide()
-        layout.addWidget(self.progress)
-
-    # ---- pairing flow ----
-    def _start_pairing(self) -> None:
-        mid = self.machine_edit.text().strip()
-        if not mid:
-            QMessageBox.warning(self, "Machine name required", "Type a machine name first.")
-            return
-
-        self._approved = False
-        self.api_key = ""
-        self.machine_id = mid
-        self.start_btn.setEnabled(False)
-        self.machine_edit.setEnabled(False)
-        self.cancel_btn.setEnabled(True)
-        self.status_label.setText("Contacting VPinLeaders…")
-        self.progress.show()
-
-        self._worker = _PairingWorker(mid, self._api_url)
-        self._worker.started.connect(self._on_started)
-        self._worker.qr_ready.connect(self._on_qr)
-        self._worker.approved.connect(self._on_approved)
-        self._worker.failed.connect(self._on_failed)
-        self._worker.expired.connect(self._on_expired)
-        self._worker.start()
-
-    def _cancel_pairing(self) -> None:
-        if self._worker is not None:
-            self._worker.stop()
-            self._worker = None
-        self.progress.hide()
-        self.qr_label.clear()
-        self.status_label.setText("Pairing cancelled.")
-        self.cancel_btn.setEnabled(False)
-        self.start_btn.setEnabled(True)
-        self.machine_edit.setEnabled(True)
-
-    def _on_started(self, pairing_url: str, pairing_code: str) -> None:
-        self.status_label.setText(
-            f"Open <a href='{pairing_url}'>{pairing_url}</a> on any signed-in device,\n"
-            f"or scan the QR code below. Pairing code: <b>{pairing_code}</b>"
-        )
-        self.status_label.setTextFormat(Qt.TextFormat.RichText)
-        self.status_label.setOpenExternalLinks(True)
-
-    def _on_qr(self, pixmap: QPixmap) -> None:
-        self.qr_label.setPixmap(pixmap.scaled(
-            220, 220,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        ))
-
-    def _on_approved(self, machine_id: str, api_key: str) -> None:
-        self._approved = True
-        self.machine_id = machine_id
-        self.api_key = api_key
-        self.progress.hide()
-        self.status_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.status_label.setText(f"Paired successfully as '{machine_id}'.")
-        self.cancel_btn.setEnabled(False)
-        self.completeChanged.emit()
-
-    def _on_failed(self, message: str) -> None:
-        self.progress.hide()
-        self.status_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.status_label.setText(message)
-        self.start_btn.setEnabled(True)
-        self.cancel_btn.setEnabled(False)
-        self.machine_edit.setEnabled(True)
-
-    def _on_expired(self) -> None:
-        self.progress.hide()
-        self.status_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.status_label.setText("Session expired before approval. Click Start Pairing to try again.")
-        self.start_btn.setEnabled(True)
-        self.cancel_btn.setEnabled(False)
-        self.machine_edit.setEnabled(True)
-
-    # ---- QWizardPage hooks ----
-    def isComplete(self) -> bool:
-        return self._approved
-
-    def cleanupPage(self) -> None:
-        # Stop any in-flight pairing if the user goes Back.
-        if self._worker is not None:
-            self._worker.stop()
-            self._worker = None
+    @property
+    def want_vpinplay(self) -> bool:
+        return self.cb_vpinplay.isChecked()
 
 
 class _WoVPPage(QWizardPage):
@@ -520,21 +291,31 @@ class _VPinPlayPage(QWizardPage):
     def __init__(self):
         super().__init__()
         layout = _build_page_layout(self, "VPinPlay setup", "Sync scores to your own local or network VPinPlay instance.")
+        imported = load_vpinfe_vpinplay_config()
         form = QFormLayout()
-        self.api_url_edit = QLineEdit(DEFAULT_VPINPLAY_API_URL)
-        self.user_id_edit = QLineEdit()
-        self.initials_edit = QLineEdit()
-        self.machine_id_edit = QLineEdit(_generate_vpinplay_machine_id())
+        self.api_url_edit = QLineEdit(imported.get("api_url") or DEFAULT_VPINPLAY_API_URL)
+        self.user_id_edit = QLineEdit(imported.get("user_id", ""))
+        self.initials_edit = QLineEdit(imported.get("initials", ""))
+        self.machine_id_edit = QLineEdit(_machine_id_or_generated(imported.get("machine_id", "")))
         self.machine_id_edit.setReadOnly(True)
+        self.auto_send_check = QCheckBox("Send VPinPlay scores automatically when a game ends")
+        if imported.get("source_path"):
+            note_text = "VPinPlay details were loaded from VPinFE."
+        else:
+            note_text = "Machine ID is generated automatically."
+        self.machine_id_note = QLabel(note_text)
+        self.machine_id_note.setWordWrap(True)
 
-        for edit in (self.api_url_edit, self.user_id_edit, self.initials_edit):
+        for edit in (self.api_url_edit, self.user_id_edit, self.initials_edit, self.machine_id_edit):
             edit.textChanged.connect(self.completeChanged)
 
         form.addRow("VPinPlay URL:", self.api_url_edit)
         form.addRow("User ID:", self.user_id_edit)
         form.addRow("Initials:", self.initials_edit)
         form.addRow("Machine ID:", self.machine_id_edit)
+        form.addRow("", self.machine_id_note)
         layout.addLayout(form)
+        layout.addWidget(self.auto_send_check)
         layout.addStretch(1)
 
     def isComplete(self) -> bool:
@@ -542,7 +323,7 @@ class _VPinPlayPage(QWizardPage):
             self.api_url_edit.text().strip()
             and self.user_id_edit.text().strip()
             and self.initials_edit.text().strip()
-            and len(self.machine_id_edit.text().strip()) == 64
+            and _valid_vpinplay_machine_id(self.machine_id_edit.text())
         )
 
     @property
@@ -559,8 +340,19 @@ class _VPinPlayPage(QWizardPage):
 
     @property
     def machine_id(self) -> str:
-        value = self.machine_id_edit.text().strip()
-        return value if len(value) == 64 else _generate_vpinplay_machine_id()
+        return self.machine_id_edit.text().strip()
+
+    @property
+    def auto_send(self) -> bool:
+        return self.auto_send_check.isChecked()
+
+    def apply_values(self, values: dict) -> None:
+        self.api_url_edit.setText(values.get("api_url") or DEFAULT_VPINPLAY_API_URL)
+        self.user_id_edit.setText(values.get("user_id", ""))
+        self.initials_edit.setText(values.get("initials", ""))
+        self.machine_id_edit.setText(_machine_id_or_generated(values.get("machine_id", "")))
+        if values.get("source_path"):
+            self.machine_id_note.setText("VPinPlay details were loaded from VPinFE.")
 
 
 class _CapturePage(QWizardPage):
@@ -569,7 +361,7 @@ class _CapturePage(QWizardPage):
         layout = _build_page_layout(self, "Capture & hotkey", "Choose which display to capture and the manual-send hotkey.")
         layout.addWidget(QLabel(
             "Screenshots are taken whenever you trigger a manual send. They\n"
-            "are attached to VPinLeaders / WoVP submissions. Pick the display\n"
+            "are attached to WoVP and iScored submissions. Pick the display\n"
             "you want captured (usually the playfield)."
         ))
 
@@ -627,8 +419,8 @@ class _DonePage(QWizardPage):
         if not isinstance(wiz, FirstRunWizard):
             return
         bullets = []
-        if wiz.picker.want_vpin and wiz.vpin.isComplete():
-            bullets.append(f"• VPinLeaders paired as '{wiz.vpin.machine_id}'")
+        if wiz.picker.want_vpinplay and wiz.vpinplay.isComplete():
+            bullets.append("• VPinPlay configured")
         if wiz.picker.want_wovp and wiz.wovp.isComplete():
             bullets.append("• WoVP API key configured")
         if wiz.picker.want_iscored and wiz.iscored.isComplete():
@@ -648,7 +440,7 @@ class FirstRunWizard(QWizard):
     PAGE_WELCOME = 0
     PAGE_NVRAM = 1
     PAGE_PICKER = 2
-    PAGE_VPIN = 3
+    PAGE_VPINPLAY = 3
     PAGE_WOVP = 4
     PAGE_ISCORED = 5
     PAGE_CAPTURE = 6
@@ -665,7 +457,7 @@ class FirstRunWizard(QWizard):
         self.welcome = _WelcomePage()
         self.nvram = _NvramFolderPage()
         self.picker = _IntegrationPickerPage()
-        self.vpin = _VPinLeadersPage(default_api_url=DEFAULT_API_URL)
+        self.vpinplay = _VPinPlayPage()
         self.wovp = _WoVPPage()
         self.iscored = _IScoredPage()
         self.capture = _CapturePage()
@@ -674,7 +466,7 @@ class FirstRunWizard(QWizard):
         self.setPage(self.PAGE_WELCOME, self.welcome)
         self.setPage(self.PAGE_NVRAM, self.nvram)
         self.setPage(self.PAGE_PICKER, self.picker)
-        self.setPage(self.PAGE_VPIN, self.vpin)
+        self.setPage(self.PAGE_VPINPLAY, self.vpinplay)
         self.setPage(self.PAGE_WOVP, self.wovp)
         self.setPage(self.PAGE_ISCORED, self.iscored)
         self.setPage(self.PAGE_CAPTURE, self.capture)
@@ -687,14 +479,14 @@ class FirstRunWizard(QWizard):
         if cur == self.PAGE_NVRAM:
             return self.PAGE_PICKER
         if cur == self.PAGE_PICKER:
-            if self.picker.want_vpin:
-                return self.PAGE_VPIN
+            if self.picker.want_vpinplay:
+                return self.PAGE_VPINPLAY
             if self.picker.want_wovp:
                 return self.PAGE_WOVP
             if self.picker.want_iscored:
                 return self.PAGE_ISCORED
             return self.PAGE_CAPTURE
-        if cur == self.PAGE_VPIN:
+        if cur == self.PAGE_VPINPLAY:
             if self.picker.want_wovp:
                 return self.PAGE_WOVP
             if self.picker.want_iscored:
@@ -720,16 +512,21 @@ class FirstRunWizard(QWizard):
 
     def _save(self) -> None:
         cp = _read_config(self.config_path)
+        cp.remove_section("vpinleaders")
+        cp.remove_section("credentials")
 
-        # VPinLeaders
-        _ensure_section(cp, "vpinleaders")
-        if self.picker.want_vpin and self.vpin.isComplete():
-            cp["vpinleaders"]["enable"] = "true"
-            cp["vpinleaders"]["api_url"] = DEFAULT_API_URL
-            cp["vpinleaders"]["machine_id"] = self.vpin.machine_id
-            cp["vpinleaders"]["api_key"] = self.vpin.api_key
+        # VPinPlay
+        _ensure_section(cp, "vpinplay")
+        if self.picker.want_vpinplay and self.vpinplay.isComplete():
+            cp["vpinplay"]["enable"] = "true"
+            cp["vpinplay"]["api_url"] = normalize_api_url(self.vpinplay.api_url)
+            cp["vpinplay"]["user_id"] = self.vpinplay.user_id
+            cp["vpinplay"]["initials"] = self.vpinplay.initials
+            cp["vpinplay"]["machine_id"] = self.vpinplay.machine_id
+            cp["vpinplay"]["auto_send"] = "true" if self.vpinplay.auto_send else "false"
         else:
-            cp["vpinleaders"]["enable"] = "false"
+            cp["vpinplay"]["enable"] = "false"
+            cp["vpinplay"]["auto_send"] = "false"
 
         # WoVP
         _ensure_section(cp, "wovp")
@@ -794,9 +591,21 @@ class SettingsDialog(QDialog):
 
     # ---- tabs ----
     def _build_integrations_tab(self) -> None:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(12)
+
+        def tune_form(form: QFormLayout) -> None:
+            form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+            form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+            form.setHorizontalSpacing(10)
+            form.setVerticalSpacing(10)
 
         def style_integration_box(box: QGroupBox) -> None:
             box.setStyleSheet(
@@ -822,27 +631,35 @@ class SettingsDialog(QDialog):
             line.setFrameShadow(QFrame.Shadow.Sunken)
             layout.addWidget(line)
 
-        # VPinLeaders
-        vpin_box = QGroupBox("VPinLeaders")
-        style_integration_box(vpin_box)
-        vpin_form = QFormLayout(vpin_box)
-        self.cb_vpin = QCheckBox("Enable VPinLeaders")
-        vpin_form.addRow(self.cb_vpin)
-        self.vpin_machine_id = QLineEdit()
-        vpin_form.addRow("Machine ID:", self.vpin_machine_id)
-        self.vpin_api_key = QLineEdit()
-        self.vpin_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        vpin_form.addRow("API key:", self.vpin_api_key)
-        self.vpin_register_btn = QPushButton("Register...")
-        self.vpin_register_btn.clicked.connect(self._register_vpinleaders)
-        vpin_form.addRow(self.vpin_register_btn)
-        layout.addWidget(vpin_box)
+        # VPinPlay
+        vpinplay_box = QGroupBox("VPinPlay")
+        style_integration_box(vpinplay_box)
+        vpinplay_form = QFormLayout(vpinplay_box)
+        tune_form(vpinplay_form)
+        self.cb_vpinplay = QCheckBox("Enable VPinPlay")
+        vpinplay_form.addRow(self.cb_vpinplay)
+        self.vpinplay_api_url = QLineEdit()
+        vpinplay_form.addRow("VPinPlay URL:", self.vpinplay_api_url)
+        self.vpinplay_user_id = QLineEdit()
+        vpinplay_form.addRow("User ID:", self.vpinplay_user_id)
+        self.vpinplay_initials = QLineEdit()
+        vpinplay_form.addRow("Initials:", self.vpinplay_initials)
+        self.vpinplay_machine_id = QLineEdit()
+        self.vpinplay_machine_id.setReadOnly(True)
+        vpinplay_form.addRow("Machine ID:", self.vpinplay_machine_id)
+        vpinplay_machine_id_note = QLabel("Machine ID is generated automatically.")
+        vpinplay_machine_id_note.setWordWrap(True)
+        vpinplay_form.addRow("", vpinplay_machine_id_note)
+        self.cb_vpinplay_auto_send = QCheckBox("Send VPinPlay scores automatically when a game ends")
+        vpinplay_form.addRow(self.cb_vpinplay_auto_send)
+        layout.addWidget(vpinplay_box)
         add_separator()
 
         # WoVP
         wovp_box = QGroupBox("WoVP")
         style_integration_box(wovp_box)
         wovp_form = QFormLayout(wovp_box)
+        tune_form(wovp_form)
         self.cb_wovp = QCheckBox("Enable WoVP")
         wovp_form.addRow(self.cb_wovp)
         self.wovp_api_key = QLineEdit()
@@ -855,32 +672,16 @@ class SettingsDialog(QDialog):
         isc_box = QGroupBox("iScored")
         style_integration_box(isc_box)
         isc_form = QFormLayout(isc_box)
+        tune_form(isc_form)
         self.cb_iscored = QCheckBox("Enable iScored")
         isc_form.addRow(self.cb_iscored)
         self.iscored_player = QLineEdit()
         isc_form.addRow("Username:", self.iscored_player)
         layout.addWidget(isc_box)
-        add_separator()
-
-        # VPinPlay
-        vpinplay_box = QGroupBox("VPinPlay")
-        style_integration_box(vpinplay_box)
-        vpinplay_form = QFormLayout(vpinplay_box)
-        self.cb_vpinplay = QCheckBox("Enable VPinPlay")
-        vpinplay_form.addRow(self.cb_vpinplay)
-        self.vpinplay_api_url = QLineEdit()
-        vpinplay_form.addRow("VPinPlay URL:", self.vpinplay_api_url)
-        self.vpinplay_user_id = QLineEdit()
-        vpinplay_form.addRow("User ID:", self.vpinplay_user_id)
-        self.vpinplay_initials = QLineEdit()
-        vpinplay_form.addRow("Initials:", self.vpinplay_initials)
-        self.vpinplay_machine_id = QLineEdit()
-        self.vpinplay_machine_id.setReadOnly(True)
-        vpinplay_form.addRow("Machine ID:", self.vpinplay_machine_id)
-        layout.addWidget(vpinplay_box)
 
         layout.addStretch(1)
-        self.tabs.addTab(page, "Integrations")
+        scroll.setWidget(page)
+        self.tabs.addTab(scroll, "Integrations")
 
     def _build_capture_tab(self) -> None:
         page = QWidget()
@@ -939,24 +740,19 @@ class SettingsDialog(QDialog):
     # ---- load / save ----
     def _load(self) -> None:
         cp = _read_config(self.config_path)
-        self.cb_vpin.setChecked(_truthy(cp.get("vpinleaders", "enable", fallback="false")))
-        self.vpin_machine_id.setText(cp.get("vpinleaders", "machine_id", fallback=""))
-        self.vpin_api_key.setText(cp.get("vpinleaders", "api_key", fallback=""))
+        vpinplay_values = _vpinplay_values_from_vpinfe_or_config(cp)
+        self.cb_vpinplay.setChecked(_truthy(cp.get("vpinplay", "enable", fallback="false")))
+        self.vpinplay_api_url.setText(vpinplay_values["api_url"])
+        self.vpinplay_user_id.setText(vpinplay_values["user_id"])
+        self.vpinplay_initials.setText(vpinplay_values["initials"])
+        self.vpinplay_machine_id.setText(vpinplay_values["machine_id"])
+        self.cb_vpinplay_auto_send.setChecked(_truthy(cp.get("vpinplay", "auto_send", fallback="false")))
 
         self.cb_wovp.setChecked(_truthy(cp.get("wovp", "enable", fallback="false")))
         self.wovp_api_key.setText(cp.get("wovp", "api_key", fallback=""))
 
         self.cb_iscored.setChecked(_truthy(cp.get("iscored", "enable", fallback="false")))
         self.iscored_player.setText(cp.get("iscored", "player_name", fallback=""))
-
-        self.cb_vpinplay.setChecked(_truthy(cp.get("vpinplay", "enable", fallback="false")))
-        self.vpinplay_api_url.setText(cp.get("vpinplay", "api_url", fallback=DEFAULT_VPINPLAY_API_URL))
-        self.vpinplay_user_id.setText(cp.get("vpinplay", "user_id", fallback=""))
-        self.vpinplay_initials.setText(cp.get("vpinplay", "initials", fallback=""))
-        machine_id = cp.get("vpinplay", "machine_id", fallback="").strip()
-        if len(machine_id) != 64:
-            machine_id = _generate_vpinplay_machine_id()
-        self.vpinplay_machine_id.setText(machine_id)
 
         try:
             sid = int(cp.get("screenshot", "screen_to_capture", fallback="0") or "0")
@@ -970,24 +766,12 @@ class SettingsDialog(QDialog):
         self.joy_edit.setText(cp.get("hotkeys", "joystick_buttons", fallback=""))
 
         self.nvram_edit.setText(cp.get("nvram", "base_dir", fallback=""))
-        self.log_edit.setText(cp.get("logging", "file", fallback="~/.vpinleaders/logs/vpinleaders.log"))
-        self._update_vpinleaders_registration_action()
-
-    def _update_vpinleaders_registration_action(self) -> None:
-        is_registered = bool(
-            self.vpin_machine_id.text().strip()
-            and self.vpin_api_key.text().strip()
-        )
-        self.vpin_register_btn.setVisible(not is_registered)
+        self.log_edit.setText(cp.get("logging", "file", fallback="~/.vpinscoretracker/logs/vpinscoretracker.log"))
 
     def _on_save(self) -> None:
         cp = _read_config(self.config_path)
-
-        _ensure_section(cp, "vpinleaders")
-        cp["vpinleaders"]["enable"] = "true" if self.cb_vpin.isChecked() else "false"
-        cp["vpinleaders"]["api_url"] = DEFAULT_API_URL
-        cp["vpinleaders"]["machine_id"] = self.vpin_machine_id.text().strip()
-        cp["vpinleaders"]["api_key"] = self.vpin_api_key.text().strip()
+        cp.remove_section("vpinleaders")
+        cp.remove_section("credentials")
 
         _ensure_section(cp, "wovp")
         cp["wovp"]["enable"] = "true" if self.cb_wovp.isChecked() else "false"
@@ -1001,11 +785,22 @@ class SettingsDialog(QDialog):
 
         _ensure_section(cp, "vpinplay")
         cp["vpinplay"]["enable"] = "true" if self.cb_vpinplay.isChecked() else "false"
-        cp["vpinplay"]["api_url"] = self.vpinplay_api_url.text().strip() or DEFAULT_VPINPLAY_API_URL
+        cp["vpinplay"]["api_url"] = normalize_api_url(self.vpinplay_api_url.text())
         cp["vpinplay"]["user_id"] = self.vpinplay_user_id.text().strip()
         cp["vpinplay"]["initials"] = self.vpinplay_initials.text().strip()
-        machine_id = self.vpinplay_machine_id.text().strip()
-        cp["vpinplay"]["machine_id"] = machine_id if len(machine_id) == 64 else _generate_vpinplay_machine_id()
+        cp["vpinplay"]["machine_id"] = _machine_id_or_generated(self.vpinplay_machine_id.text())
+        cp["vpinplay"]["auto_send"] = "true" if self.cb_vpinplay_auto_send.isChecked() else "false"
+        if self.cb_vpinplay.isChecked() and not (
+            cp["vpinplay"]["api_url"].strip()
+            and cp["vpinplay"]["user_id"].strip()
+            and cp["vpinplay"]["initials"].strip()
+        ):
+            QMessageBox.critical(
+                self,
+                "VPinPlay setup incomplete",
+                "Enter the VPinPlay URL, user ID, and initials.",
+            )
+            return
 
         _ensure_section(cp, "screenshot")
         cp["screenshot"]["screen_to_capture"] = str(int(self.screen_combo.currentData() or 0))
@@ -1028,22 +823,6 @@ class SettingsDialog(QDialog):
             return
         self.accept()
 
-    def _register_vpinleaders(self) -> None:
-        wizard = IntegrationSetupWizard(self.config_path, "vpinleaders", parent=self)
-        QTimer.singleShot(0, wizard.raise_)
-        QTimer.singleShot(0, wizard.activateWindow)
-        result = wizard.exec()
-        del wizard
-        if not result:
-            return
-
-        cp = _read_config(self.config_path)
-        self.cb_vpin.setChecked(_truthy(cp.get("vpinleaders", "enable", fallback="true")))
-        self.vpin_machine_id.setText(cp.get("vpinleaders", "machine_id", fallback=""))
-        self.vpin_api_key.setText(cp.get("vpinleaders", "api_key", fallback=""))
-        self._update_vpinleaders_registration_action()
-
-
 class IntegrationSetupWizard(QWizard):
     PAGE_SETUP = 0
 
@@ -1057,10 +836,7 @@ class IntegrationSetupWizard(QWizard):
 
         cp = _read_config(config_path)
 
-        if integration == "vpinleaders":
-            self.setWindowTitle("VPinLeaders Client - VPinLeaders Setup")
-            self.page = _VPinLeadersPage(default_api_url=DEFAULT_API_URL)
-        elif integration == "wovp":
+        if integration == "wovp":
             self.setWindowTitle("VPinLeaders Client - WoVP Setup")
             self.page = _WoVPPage()
             self.page.key_edit.setText(cp.get("wovp", "api_key", fallback=""))
@@ -1071,13 +847,8 @@ class IntegrationSetupWizard(QWizard):
         elif integration == "vpinplay":
             self.setWindowTitle("VPinLeaders Client - VPinPlay Setup")
             self.page = _VPinPlayPage()
-            self.page.api_url_edit.setText(cp.get("vpinplay", "api_url", fallback=DEFAULT_VPINPLAY_API_URL))
-            self.page.user_id_edit.setText(cp.get("vpinplay", "user_id", fallback=""))
-            self.page.initials_edit.setText(cp.get("vpinplay", "initials", fallback=""))
-            machine_id = cp.get("vpinplay", "machine_id", fallback="").strip()
-            self.page.machine_id_edit.setText(
-                machine_id if len(machine_id) == 64 else _generate_vpinplay_machine_id()
-            )
+            self.page.apply_values(_vpinplay_values_from_vpinfe_or_config(cp))
+            self.page.auto_send_check.setChecked(_truthy(cp.get("vpinplay", "auto_send", fallback="false")))
         else:
             raise ValueError(f"Unknown integration: {integration}")
 
@@ -1097,15 +868,7 @@ class IntegrationSetupWizard(QWizard):
     def _save(self) -> None:
         cp = _read_config(self.config_path)
 
-        if self.integration == "vpinleaders":
-            if not isinstance(self.page, _VPinLeadersPage) or not self.page.isComplete():
-                raise ValueError("VPinLeaders pairing is not complete.")
-            _ensure_section(cp, "vpinleaders")
-            cp["vpinleaders"]["enable"] = "true"
-            cp["vpinleaders"]["api_url"] = DEFAULT_API_URL
-            cp["vpinleaders"]["machine_id"] = self.page.machine_id
-            cp["vpinleaders"]["api_key"] = self.page.api_key
-        elif self.integration == "wovp":
+        if self.integration == "wovp":
             if not isinstance(self.page, _WoVPPage) or not self.page.isComplete():
                 raise ValueError("WoVP API key is required.")
             _ensure_section(cp, "wovp")
@@ -1124,10 +887,11 @@ class IntegrationSetupWizard(QWizard):
                 raise ValueError("VPinPlay URL, user ID, and initials are required.")
             _ensure_section(cp, "vpinplay")
             cp["vpinplay"]["enable"] = "true"
-            cp["vpinplay"]["api_url"] = self.page.api_url
+            cp["vpinplay"]["api_url"] = normalize_api_url(self.page.api_url)
             cp["vpinplay"]["user_id"] = self.page.user_id
             cp["vpinplay"]["initials"] = self.page.initials
             cp["vpinplay"]["machine_id"] = self.page.machine_id
+            cp["vpinplay"]["auto_send"] = "true" if self.page.auto_send else "false"
 
         _write_config(cp, self.config_path)
 
@@ -1161,7 +925,10 @@ def run_first_run_wizard(config_path: str) -> bool:
     QTimer.singleShot(0, wizard.raise_)
     QTimer.singleShot(0, wizard.activateWindow)
     result = wizard.exec()
-    del wizard
+    wizard.close()
+    wizard.deleteLater()
+    app.setQuitOnLastWindowClosed(False)
+    app.processEvents()
     return bool(result)
 
 

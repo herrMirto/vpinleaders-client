@@ -1,15 +1,6 @@
 import sys
 import platform
-
-# Force macOS to treat this as a background agent (no Dock icon / no menu bar)
-if platform.system() == "Darwin":
-    try:
-        from AppKit import NSApplication
-        ns_app = NSApplication.sharedApplication()
-        # 2 = NSApplicationActivationPolicyProhibited
-        ns_app.setActivationPolicy_(2)
-    except Exception:
-        pass
+import time
 
 from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal
@@ -155,7 +146,7 @@ class NotificationOverlay(QWidget):
         if self._opacity_supported:
             self.setWindowOpacity(0.0)
 
-        self.remaining_time = DURATION
+        self._started_at = time.monotonic()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
 
@@ -167,7 +158,9 @@ class NotificationOverlay(QWidget):
         # is mapped; calling move() again after show() ensures correct placement.
         self.show()
         self.move(self.final_x, self.y_pos)
-        self.raise_()
+        if platform.system() == "Darwin":
+            QTimer.singleShot(0, self._restore_frontmost_app)
+            QTimer.singleShot(50, self._restore_frontmost_app)
 
         if self._opacity_supported:
             self.anim = QPropertyAnimation(self, b"windowOpacity", self)
@@ -202,11 +195,11 @@ class NotificationOverlay(QWidget):
         self.anim.start()
 
     def tick(self):
-        self.remaining_time -= 16
-        progress = max(0.0, self.remaining_time / DURATION)
+        elapsed_ms = (time.monotonic() - self._started_at) * 1000
+        progress = max(0.0, 1.0 - (elapsed_ms / DURATION))
         self.progress_bar.setProgress(progress)
 
-        if self.remaining_time <= 0:
+        if elapsed_ms >= DURATION:
             self.timer.stop()
             self.animate_out()
 

@@ -6,9 +6,9 @@ from logging.handlers import RotatingFileHandler
 
 DEFAULT_LOG_FILE = os.path.join(
     os.path.expanduser('~'),
-    '.vpinleaders',
+    '.vpinscoretracker',
     'logs',
-    'vpinleaders.log',
+    'vpinscoretracker.log',
 )
 
 LOG_FORMAT = '%(asctime)s.%(msecs)03d %(levelname)s  [%(name)s] %(message)s'

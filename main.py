@@ -1,4 +1,4 @@
-import argparse
+import configparser
 import os
 import platform
 import signal
@@ -9,11 +9,8 @@ from pathlib import Path
 
 APP_CONFIG_DIR_NAME = 'vpinleaders-client'
 CONFIG_FILE_NAME = 'config.ini'
-CONFIG_WEBSITE_URL = 'https://www.vpinleaders.com'
 CONFIG_OVERRIDE_PATH = ''
-HEADLESS_MODE = False
 NOTIFICATION_SINK = None
-_batocera_popup_lock = threading.Lock()
 
 
 def _extract_config_override(argv) -> str:
@@ -30,15 +27,9 @@ def _extract_config_override(argv) -> str:
     return ''
 
 
-def _has_flag(argv, flag: str) -> bool:
-    return any(str(arg).strip() == flag for arg in (argv or []))
-
-
 def _platform_config_dir() -> str:
     system = platform.system()
     home = Path.home()
-    if system == 'Linux' and platform.uname().node == "BATOCERA":
-        return '/userdata/system/configs/vpinleaders-client'
     if system == 'Windows':
         base = os.environ.get('APPDATA')
         if not base:
@@ -62,41 +53,6 @@ def _ensure_config_dir() -> None:
     os.makedirs(os.path.dirname(_config_path()), exist_ok=True)
 
 
-def _missing_config_message(config_path: str) -> str:
-    return (
-        'Configuration file not found. '
-        f'Run the client with --register --machine-id YOUR_MACHINE_ID --nvrams-folder YOUR_TABLES_FOLDER to complete setup. '
-        f'Config path: {config_path}'
-    )
-
-
-def _default_nvram_base_dir() -> str:
-    if platform.system() == 'Linux' and platform.uname().node == "BATOCERA":
-        return '/userdata/roms/vpinball'
-    return ''
-
-
-def _ensure_config_seeded() -> bool:
-    config_path = _config_path()
-    if os.path.exists(config_path):
-        return True
-    example_path = resource_path('config.example.ini')
-    if not os.path.exists(example_path):
-        return False
-    try:
-        from registration import seed_config_from_example
-
-        seed_config_from_example(
-            config_path=config_path,
-            example_path=example_path,
-            api_url=CONFIG_WEBSITE_URL,
-            nvram_base_dir=_default_nvram_base_dir(),
-        )
-        return True
-    except Exception:
-        return False
-
-
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -104,127 +60,22 @@ def resource_path(relative_path):
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-
-def _run_batocera_popup(title: str, message: str, kind: str = 'info') -> int:
-    try:
-        import pygame
-    except Exception as exc:
-        print(f'ERROR: pygame unavailable for Batocera popup ({exc})')
-        return 1
-
-    if 'DISPLAY' not in os.environ:
-        os.environ['DISPLAY'] = ':0.0'
-
-    try:
-        pygame.init()
-        pygame.font.init()
-        display_sizes = pygame.display.get_desktop_sizes() if hasattr(pygame.display, 'get_desktop_sizes') else []
-        if display_sizes:
-            screen_w, screen_h = display_sizes[0]
-        else:
-            info = pygame.display.Info()
-            screen_w, screen_h = info.current_w, info.current_h
-        popup_w, popup_h = 520, 112
-        margin = 24
-        x = max(0, int(screen_w) - popup_w - margin)
-        y = margin
-        os.environ['SDL_VIDEO_WINDOW_POS'] = f'{x},{y}'
-        screen = pygame.display.set_mode((popup_w, popup_h), pygame.NOFRAME)
-    except Exception as exc:
-        print(f'ERROR: failed to initialize Batocera popup ({exc})')
-        return 1
-
-    colors = {
-        'info': {'bg': (37, 40, 46), 'accent': (56, 189, 248), 'title': (255, 255, 255), 'text': (216, 222, 233)},
-        'error': {'bg': (54, 32, 32), 'accent': (248, 113, 113), 'title': (255, 245, 245), 'text': (254, 226, 226)},
-    }
-    palette = colors.get(kind, colors['info'])
-
-    try:
-        title_font = pygame.font.SysFont('Arial', 24, bold=True)
-        body_font = pygame.font.SysFont('Arial', 20)
-    except Exception:
-        title_font = pygame.font.Font(None, 30)
-        body_font = pygame.font.Font(None, 24)
-
-    title_lines = [line.strip() for line in str(title or '').splitlines() if line.strip()] or ['VPinLeaders']
-    body_lines = [line.strip() for line in str(message or '').splitlines() if line.strip()]
-    body_lines = body_lines[:2]
-    if not body_lines:
-        body_lines = ['']
-
-    start_time = time.time()
-    duration = 4.0
-    clock = pygame.time.Clock()
-
-    try:
-        while (time.time() - start_time) < duration:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return 0
-            screen.fill((0, 0, 0))
-            panel = pygame.Rect(0, 0, popup_w, popup_h)
-            pygame.draw.rect(screen, palette['bg'], panel, border_radius=18)
-            pygame.draw.rect(screen, palette['accent'], pygame.Rect(0, 0, 10, popup_h), border_top_left_radius=18, border_bottom_left_radius=18)
-
-            y_pos = 18
-            for line in title_lines[:1]:
-                surf = title_font.render(line, True, palette['title'])
-                screen.blit(surf, (28, y_pos))
-                y_pos += 34
-
-            for line in body_lines:
-                surf = body_font.render(line, True, palette['text'])
-                screen.blit(surf, (28, y_pos))
-                y_pos += 26
-
-            pygame.display.flip()
-            clock.tick(30)
-    finally:
-        pygame.quit()
-    return 0
-
-
-# Fast-path for registration: avoid importing optional runtime dependencies.
-if '--register' in sys.argv[1:]:
-    CONFIG_OVERRIDE_PATH = _extract_config_override(sys.argv[1:])
-    _cli = argparse.ArgumentParser(description='VPinLeaders Score Sender CLI')
-    _cli.add_argument('--register', action='store_true', help='Start device registration and write config.ini')
-    _cli.add_argument('--machine-id', default='', help='Unique machine id used for registration')
-    _cli.add_argument('--nvrams-folder', default='', help='Tables folder used to discover score files')
-    _cli.add_argument('--config', default='', help='Path to config.ini')
-    _args, _ = _cli.parse_known_args(sys.argv[1:])
-    try:
-        if _args.config.strip():
-            CONFIG_OVERRIDE_PATH = os.path.abspath(os.path.expanduser(_args.config.strip()))
-        if _args.register:
-            from registration import register as _register_device
-
-            sys.exit(
-                _register_device(
-                    machine_id=_args.machine_id.strip(),
-                    config_path=_config_path(),
-                    example_path=resource_path('config.example.ini'),
-                    nvram_base_dir=_args.nvrams_folder.strip(),
-                    api_url=CONFIG_WEBSITE_URL,
-                )
-            )
-    except Exception as _e:
-        print(f'ERROR: {_e}')
-        sys.exit(1)
-
-import configparser
-import requests
-
 from app_logging import configure_logging, default_log_file, get_logger, log_message
 from nvram_monitor import NVRAMMonitor
 from screenshot import capture_screen
+
+try:
+    import score_ocr as _score_ocr
+    _SCORE_OCR_AVAILABLE = True
+except ImportError:
+    _score_ocr = None
+    _SCORE_OCR_AVAILABLE = False
 
 
 # =========================
 # LOGGING
 # =========================
-LOGGER = get_logger('VPinLeadersClient')
+LOGGER = get_logger('vpinscoretracker')
 
 
 def _log(level, msg):
@@ -238,15 +89,10 @@ config = configparser.ConfigParser()
 
 # Per-integration enable flags. Multiple integrations can be on at the same
 # time; a single manual send fans out to every enabled one.
-VPINLEADERS_ENABLED = False
 WOVP_ENABLED = False
 ISCORED_ENABLED = False
 VPINPLAY_ENABLED = False
-
-# API/Credentials
-API_URL = ''
-API_KEY = ''
-MACHINE_ID = ''
+VPINPLAY_AUTO_SEND = False
 
 # NVRAM source settings
 NVRAM_DIR = ''
@@ -304,6 +150,69 @@ def _normalize_score(raw):
         return int(str(raw).replace(',', '').replace('.', '').lstrip('0') or 0)
     except Exception:
         return 0
+
+
+def _detect_score_from_screenshot(pil_image) -> int:
+    """
+    Convert a PIL screenshot to OpenCV format and run score_ocr on it.
+    Returns the detected score as int, or 0 if nothing was found.
+    """
+    if not _SCORE_OCR_AVAILABLE or pil_image is None:
+        return 0
+    try:
+        import numpy as np
+        import cv2
+        img_rgb = np.array(pil_image.convert('RGB'))
+        img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+        result = _score_ocr.detect_score(img_bgr)
+        if result.best and result.best.score:
+            return int(result.best.score)
+    except Exception as e:
+        _log('WARN', f'Score OCR error: {e}')
+    return 0
+
+
+def _get_best_available_rom() -> str:
+    """Return the best ROM name we can determine right now (may be empty)."""
+    monitor = _nvram_monitor_ref
+    if monitor is not None:
+        try:
+            if monitor._unsupported_active_rom:
+                return monitor._unsupported_active_rom
+        except AttributeError:
+            pass
+        try:
+            if monitor.active_rom:
+                return monitor.active_rom
+        except AttributeError:
+            pass
+    with _last_score_lock:
+        return _last_score_rom or ''
+
+
+def _get_best_available_vpx() -> str:
+    """Return the best VPX filename we can determine right now (may be empty)."""
+    monitor = _nvram_monitor_ref
+    if monitor is not None:
+        try:
+            if monitor.last_detected_table_path:
+                return os.path.basename(monitor.last_detected_table_path)
+        except AttributeError:
+            pass
+    with _last_score_lock:
+        return _last_score_vpx_file or ''
+
+
+def _resize_pil_for_send(pil_image):
+    """Resize a PIL Image to SCREENSHOT_MAX_WIDTH, preserving aspect ratio."""
+    if not pil_image or not SCREENSHOT_MAX_WIDTH or SCREENSHOT_MAX_WIDTH <= 0:
+        return pil_image
+    w, h = pil_image.size
+    if w <= SCREENSHOT_MAX_WIDTH:
+        return pil_image
+    from PIL import Image as _PilImage
+    ratio = SCREENSHOT_MAX_WIDTH / w
+    return pil_image.resize((SCREENSHOT_MAX_WIDTH, int(h * ratio)), _PilImage.LANCZOS)
 
 
 def _parse_button_combo(raw):
@@ -403,47 +312,6 @@ def _set_notification_sink(sink):
     NOTIFICATION_SINK = sink
 
 
-def _is_batocera():
-    if platform.system() != 'Linux':
-        return False
-    return platform.uname().node == "BATOCERA"
-
-
-def show_notification_batocera(title_or_table, message_or_score, kind='info'):
-    if isinstance(message_or_score, (int, float)):
-        title = f'VPinLeaders (score sent)'
-        score_str = f"{int(message_or_score):,}"
-        message = f'Table: {title_or_table}\nScore: {score_str}'
-    elif isinstance(message_or_score, str) and message_or_score.replace(',', '').isdigit():
-        title = f'VPinLeaders (score sent)'
-        score_str = f"{int(message_or_score.replace(',', '')):,}"
-        message = f'Table: {title_or_table}\nScore: {score_str}'
-    else:
-        title = title_or_table
-        message = message_or_score
-
-    def _worker():
-        if not _batocera_popup_lock.acquire(blocking=False):
-            return
-        try:
-            _run_batocera_popup(title, message, kind)
-        except Exception as e:
-            _log('WARN', f'Batocera popup failed: {e}')
-        finally:
-            _batocera_popup_lock.release()
-
-    threading.Thread(target=_worker, daemon=True).start()
-
-
-def _install_headless_signal_handlers():
-    def _handle_shutdown(sig, frame):
-        _log('INFO', f'Signal received ({sig}), shutting down')
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, _handle_shutdown)
-    signal.signal(signal.SIGTERM, _handle_shutdown)
-
-
 def _install_desktop_signal_handlers(app, qtimer_cls):
     signal_timer = qtimer_cls()
 
@@ -467,15 +335,16 @@ def _truthy(value: str) -> bool:
 
 
 def load_config():
-    global API_URL, API_KEY, MACHINE_ID
     global SCREENSHOT_SCREEN_ID, SCREENSHOT_MAX_WIDTH, SCREENSHOT_JPEG_QUALITY
     global MANUAL_SEND_KEYBOARD_BINDING, MANUAL_SEND_JOYSTICK_BUTTONS
-    global VPINLEADERS_ENABLED, WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED
+    global WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED, VPINPLAY_AUTO_SEND
     global NVRAM_DIR, LOG_FILE_PATH, CONFIG_PATH
 
     CONFIG_PATH = _config_path()
     config.clear()
     config.read(CONFIG_PATH)
+    config.remove_section('vpinleaders')
+    config.remove_section('credentials')
 
     # ── Logging ───────────────────────────────────────────────────────────
     if 'logging' in config:
@@ -485,19 +354,6 @@ def load_config():
     actual_log_file = configure_logging(log_file=LOG_FILE_PATH, console=True)
     if actual_log_file:
         LOG_FILE_PATH = actual_log_file
-
-    # ── VPinLeaders ───────────────────────────────────────────────────────
-    if 'vpinleaders' in config:
-        VPINLEADERS_ENABLED = _truthy(config['vpinleaders'].get('enable', 'false'))
-        API_URL = config['vpinleaders'].get('api_url', CONFIG_WEBSITE_URL).strip() or CONFIG_WEBSITE_URL
-        API_KEY = config['vpinleaders'].get('api_key', '').strip()
-        MACHINE_ID = config['vpinleaders'].get('machine_id', '').strip()
-    else:
-        VPINLEADERS_ENABLED = False
-        if 'credentials' in config:
-            API_URL = config['credentials'].get('api_url', CONFIG_WEBSITE_URL).strip() or CONFIG_WEBSITE_URL
-            API_KEY = config['credentials'].get('api_key', '').strip()
-            MACHINE_ID = config['credentials'].get('machine_id', '').strip()
 
     # ── WoVP ──────────────────────────────────────────────────────────────
     if 'wovp' in config:
@@ -514,8 +370,10 @@ def load_config():
     # ── VPinPlay ─────────────────────────────────────────────────────────
     if 'vpinplay' in config:
         VPINPLAY_ENABLED = _truthy(config['vpinplay'].get('enable', 'false'))
+        VPINPLAY_AUTO_SEND = _truthy(config['vpinplay'].get('auto_send', 'false'))
     else:
         VPINPLAY_ENABLED = False
+        VPINPLAY_AUTO_SEND = False
 
     # ── Screenshot ────────────────────────────────────────────────────────
     if 'screenshot' in config:
@@ -547,28 +405,27 @@ def load_config():
     # Normalize the in-memory config to the new format so every subsequent
     # save_config() call writes canonical keys, even after loading an old file.
 
-    if not HEADLESS_MODE:
-        try:
-            from screeninfo import get_monitors
-            monitors = get_monitors()
-            _log('INFO', f'Detected {len(monitors)} monitor(s):')
-            for i, m in enumerate(monitors):
-                _log('INFO', f'  Monitor {i}: {m.width}x{m.height} at ({m.x}, {m.y})')
-        except Exception as e:
-            _log('WARN', f'Could not enumerate monitors: {e}')
+    try:
+        from screeninfo import get_monitors
+        monitors = get_monitors()
+        _log('INFO', f'Detected {len(monitors)} monitor(s):')
+        for i, m in enumerate(monitors):
+            _log('INFO', f'  Monitor {i}: {m.width}x{m.height} at ({m.x}, {m.y})')
+    except Exception as e:
+        _log('WARN', f'Could not enumerate monitors: {e}')
 
     enabled_labels = ','.join(
         name for name, on in (
-            ('vpinleaders', VPINLEADERS_ENABLED),
+            ('vpinplay', VPINPLAY_ENABLED),
             ('wovp', WOVP_ENABLED),
             ('iscored', ISCORED_ENABLED),
-            ('vpinplay', VPINPLAY_ENABLED),
         ) if on
     ) or 'none'
     _log(
         'INFO',
         (
-            f'Config loaded. enabled={enabled_labels} | API={API_URL} | '
+            f'Config loaded. enabled={enabled_labels} | '
+            f'vpinplay_auto_send={"on" if VPINPLAY_AUTO_SEND else "off"} | '
             f'nvram_base_dir={NVRAM_DIR} | nvram_pattern={NVRAM_SCAN_PATTERN} | '
             f'manual_inputs=keyboard:{"on" if _keyboard_binding_enabled() else "off"},'
             f'joystick:{"on" if _joystick_binding_enabled() else "off"} | '
@@ -601,17 +458,14 @@ def get_input_string(title, prompt, default_val=''):
 # NOTIFICATIONS + API SEND
 # =========================
 def show_notification(title_or_table, message_or_score, kind='info'):
-    if _is_batocera():
-        return show_notification_batocera(title_or_table, message_or_score, kind)
-
     if isinstance(message_or_score, (int, float)):
-        title = 'VPinLeaders (score sent)'
+        title = 'VPinScore Tracker'
         score_str = f"{int(message_or_score):,}"
-        message = f'Table: {title_or_table}\nScore: {score_str}'
+        message = f'Integration: {title_or_table}\nScore: {score_str}'
     elif isinstance(message_or_score, str) and message_or_score.replace(',', '').isdigit():
-        title = 'VPinLeaders (score sent)'
+        title = 'VPinScore Tracker'
         score_str = f"{int(message_or_score.replace(',', '')):,}"
-        message = f'Table: {title_or_table}\nScore: {score_str}'
+        message = f'Integration: {title_or_table}\nScore: {score_str}'
     else:
         title = title_or_table
         message = message_or_score
@@ -622,89 +476,6 @@ def show_notification(title_or_table, message_or_score, kind='info'):
             NOTIFICATION_SINK(title, message, kind)
         except Exception as e:
             _log('WARN', f'Notification sink failed: {e}')
-
-
-def _format_send_error(exc):
-    msg = str(exc).strip() or exc.__class__.__name__
-    lower = msg.lower()
-    if 'connection refused' in lower:
-        return 'Could not reach the score server. Connection refused.'
-    if 'failed to establish a new connection' in lower:
-        return 'Could not reach the score server.'
-    if 'max retries exceeded' in lower:
-        return 'Could not reach the score server after multiple attempts.'
-    if 'read timed out' in lower or 'connect timeout' in lower or 'timed out' in lower:
-        return 'The score server timed out.'
-    return msg
-
-
-def send_score(table_name, score, screenshot_image=None, vpx_file: str = ''):
-    import io
-
-    clean_score = _normalize_score(score)
-    if clean_score <= 0:
-        return
-
-    if not (API_URL and API_KEY):
-        _log('ERROR', 'VPinLeaders: missing api_url or api_key; skipping submission')
-        show_notification('VPinLeaders Send Failed', 'VPinLeaders is not configured.', kind='error')
-        return
-
-    _log('INFO', f'VPinLeaders: sending score for {table_name}')
-
-    screenshot = screenshot_image
-
-    # ---- VPinLeaders.com submission ----
-    user_os = platform.system()
-    if user_os == 'Darwin':
-        user_os = 'macOS'
-    if user_os == 'Linux' and platform.uname().node == "BATOCERA":
-        user_os = 'Batocera'
-
-    try:
-        api_base = API_URL.rstrip('/')
-        endpoint = f'{api_base}/api/submit-score'
-
-        if screenshot:
-            sc = screenshot.convert('RGB') if screenshot.mode == 'RGBA' else screenshot
-            buffer = io.BytesIO()
-            sc.save(buffer, format='JPEG', quality=SCREENSHOT_JPEG_QUALITY, optimize=True)
-            buffer.seek(0)
-            files = {'screenshot': ('screenshot.jpg', buffer, 'image/jpeg')}
-            data = {
-                'apiKey': API_KEY,
-                'machineID': MACHINE_ID,
-                'romName': table_name,
-                'score': str(clean_score),
-                'user_os': user_os,
-            }
-            r = requests.post(endpoint, files=files, data=data, timeout=30)
-        else:
-            payload = {
-                'apiKey': API_KEY,
-                'romName': table_name,
-                'machineID': MACHINE_ID,
-                'score': clean_score,
-                'user_os': user_os,
-            }
-            r = requests.post(endpoint, json=payload, timeout=10)
-
-        r.raise_for_status()
-        result = r.json()
-        _log('INFO', f'VPinLeaders response: HTTP {r.status_code}')
-
-        if result.get('success'):
-            table_display = result.get('tableName', table_name)
-            _log('INFO', f'Score submitted successfully: {table_display}')
-            show_notification(table_display, clean_score)
-        else:
-            error_msg = str(result.get('error', 'Unknown'))
-            _log('ERROR', f"API returned error: {error_msg}")
-            show_notification('Score Send Failed', error_msg, kind='error')
-
-    except Exception as e:
-        _log('ERROR', f'Error sending score to VPinLeaders API: {e}')
-        show_notification('Score Send Failed', _format_send_error(e), kind='error')
 
 
 # =========================
@@ -777,7 +548,7 @@ def send_wovp_score(table_name, score, screenshot_image, vpx_file: str = ''):
         )
 
         _log('INFO', f'WoVP: score submitted — {table_name} → "{challenge_name}"')
-        show_notification(f'WoVP: {table_name}', clean_score)
+        show_notification('WoVP', clean_score)
 
     except Exception as e:
         _log('ERROR', f'WoVP submission failed: {e}')
@@ -820,7 +591,7 @@ def send_iscored_score(table_name, score, vpx_file: str = '', screenshot_image=N
         msg = result.get('message', '')
         if result.get('success'):
             _log('INFO', f'iScored: score submitted — {table_name} ({msg})')
-            show_notification(f'iScored: {table_name}', clean_score)
+            show_notification('iScored', clean_score)
         else:
             _log('ERROR', f'iScored submission failed: {msg}')
             show_notification('iScored Send Failed', msg or 'Unknown error', kind='error')
@@ -843,8 +614,8 @@ def send_vpinplay_score(table_name, score, vpx_file: str = ''):
     try:
         client = VPinPlayClient(CONFIG_PATH)
         if not client.is_ready():
-            _log('ERROR', 'VPinPlay: not configured (api_url, user_id, initials, or machine_id missing)')
-            show_notification('VPinPlay Send Failed', 'VPinPlay is not configured.', kind='error')
+            _log('ERROR', 'VPinPlay: not configured (api_url, user_id, or initials missing)')
+            show_notification('VPinPlay Send Failed', 'Check VPinPlay settings.', kind='error')
             return
 
         effective_path = ''
@@ -861,13 +632,27 @@ def send_vpinplay_score(table_name, score, vpx_file: str = ''):
         )
         if result.get('success'):
             _log('INFO', f"VPinPlay: score synced for {table_name} ({result.get('message')})")
-            show_notification(f'VPinPlay: {table_name}', clean_score)
+            show_notification('VPinPlay', clean_score)
         else:
             _log('ERROR', f'VPinPlay sync failed: {result}')
-            show_notification('VPinPlay Send Failed', 'VPinPlay sync failed.', kind='error')
+            show_notification('VPinPlay Send Failed', result.get('message') or 'VPinPlay sync failed.', kind='error')
     except Exception as e:
         _log('ERROR', f'VPinPlay submission failed: {e}')
         show_notification('VPinPlay Send Failed', str(e), kind='error')
+
+
+def _trigger_vpinplay_auto_send(rom, score, vpx_file: str = ''):
+    if not VPINPLAY_ENABLED or not VPINPLAY_AUTO_SEND:
+        return
+
+    def _runner():
+        _log('INFO', f'VPinPlay auto-send triggered for {rom} (vpx={vpx_file or "unknown"})')
+        try:
+            send_vpinplay_score(rom, score, vpx_file=vpx_file)
+        except Exception as e:
+            _log('ERROR', f'VPinPlay auto-send raised: {e}')
+
+    threading.Thread(target=_runner, daemon=True).start()
 
 
 # =========================
@@ -919,6 +704,7 @@ def handle_game_end_event(rom_name, scores, reason='', game_duration=None):
     _set_last_score(rom_name, best_score, vpx_file)
 
     _log('INFO', f'Score stored for manual send: {rom_name}')
+    _trigger_vpinplay_auto_send(rom_name, best_score, vpx_file=vpx_file)
 
 
 def handle_status_message_event(title, message):
@@ -972,38 +758,45 @@ def _trigger_manual_send(source):
     global _manual_send_inflight, _manual_send_last_signature, _manual_send_last_ts
 
     rom, score, vpx_file = _get_manual_score_snapshot()
-    if rom is None or score is None or score <= 0:
-        _log('WARN', f'{source} pressed but no score available to send')
-        show_notification('No Score', 'No score available to send')
-        return
+    has_nvram_score = (rom is not None and score is not None and score > 0)
+    ocr_needed = not has_nvram_score
 
-    signature = (rom, int(score))
     now = time.time()
     with _manual_send_lock:
         if _manual_send_inflight:
             _log('WARN', f'{source} ignored: a manual send is already in progress')
             return
-        if _manual_send_last_signature == signature and (now - _manual_send_last_ts) < MANUAL_SEND_DEDUPE_SEC:
-            _log('WARN', f'{source} ignored: duplicate manual send for {rom} within {MANUAL_SEND_DEDUPE_SEC:.0f}s')
-            return
+        if has_nvram_score:
+            # Full dedup: same rom+score within the window
+            signature = (rom, int(score))
+            if _manual_send_last_signature == signature and (now - _manual_send_last_ts) < MANUAL_SEND_DEDUPE_SEC:
+                _log('WARN', f'{source} ignored: duplicate manual send for {rom} within {MANUAL_SEND_DEDUPE_SEC:.0f}s')
+                return
+            _manual_send_last_signature = signature
+        else:
+            # No NVRAM score: time-based dedup only (score will come from OCR)
+            if (now - _manual_send_last_ts) < MANUAL_SEND_DEDUPE_SEC:
+                _log('WARN', f'{source} ignored: OCR send attempted too quickly after last send')
+                return
         _manual_send_inflight = True
-        _manual_send_last_signature = signature
         _manual_send_last_ts = now
 
-    _log('INFO', f'{source} triggered: sending {rom} (vpx={vpx_file or "unknown"})')
+    if ocr_needed:
+        _log('INFO', f'{source} triggered: no NVRAM score — will attempt screenshot OCR')
+    else:
+        _log('INFO', f'{source} triggered: sending {rom} score={score} (vpx={vpx_file or "unknown"})')
 
     def _runner():
-        global _manual_send_inflight
+        global _manual_send_inflight, _manual_send_last_signature
+        nonlocal rom, score, vpx_file
         try:
             targets = []
-            if VPINLEADERS_ENABLED:
-                targets.append('vpinleaders')
+            if VPINPLAY_ENABLED:
+                targets.append('vpinplay')
             if WOVP_ENABLED:
                 targets.append('wovp')
             if ISCORED_ENABLED:
                 targets.append('iscored')
-            if VPINPLAY_ENABLED:
-                targets.append('vpinplay')
 
             if not targets:
                 _log('WARN', f'{source} pressed but no integration is enabled')
@@ -1011,7 +804,54 @@ def _trigger_manual_send(source):
                 return
 
             screenshot = None
-            if 'vpinleaders' in targets or 'wovp' in targets:
+
+            # ------------------------------------------------------------------
+            # OCR fallback: no NVRAM score → take a screenshot and detect score
+            # ------------------------------------------------------------------
+            if ocr_needed:
+                if not _SCORE_OCR_AVAILABLE:
+                    _log('WARN', 'score_ocr module not available. Install pytesseract and/or easyocr.')
+                    show_notification('No Score', 'No NVRAM score and OCR is unavailable.', kind='error')
+                    return
+
+                _log('INFO', 'Capturing screenshot for OCR score detection...')
+                show_notification('Detecting Score...', 'Scanning screenshot for pinball score.')
+
+                ocr_image = capture_screen(screen_id=SCREENSHOT_SCREEN_ID, max_width=None)
+                if ocr_image is None:
+                    _log('ERROR', 'Screenshot capture failed — cannot detect score via OCR')
+                    show_notification('No Score', 'Screenshot capture failed.', kind='error')
+                    return
+
+                ocr_score = _detect_score_from_screenshot(ocr_image)
+                if not ocr_score:
+                    _log('WARN', 'OCR found no valid score in the screenshot')
+                    show_notification('No Score', 'No score detected in screenshot.', kind='error')
+                    return
+
+                score = ocr_score
+                if not vpx_file:
+                    vpx_file = _get_best_available_vpx()
+                if not rom:
+                    # Prefer VPX filename (e.g. "Theatre of Magic.vpx" → "Theatre of Magic")
+                    if vpx_file:
+                        rom = os.path.splitext(vpx_file)[0]
+                    else:
+                        rom = _get_best_available_rom() or 'unknown'
+
+                _log('INFO', f'OCR score detected: {score} (rom={rom}, vpx={vpx_file or "unknown"})')
+
+                # Update dedup signature now that we have the real score
+                with _manual_send_lock:
+                    _manual_send_last_signature = (rom, int(score))
+
+                # Reuse the OCR screenshot for integrations (resized as needed)
+                screenshot = _resize_pil_for_send(ocr_image)
+
+            # ------------------------------------------------------------------
+            # Normal path: capture screenshot for integrations that need it
+            # ------------------------------------------------------------------
+            if screenshot is None and ('wovp' in targets or 'iscored' in targets):
                 _log('INFO', 'Capturing screenshot for manual send')
                 screenshot = capture_screen(
                     screen_id=SCREENSHOT_SCREEN_ID,
@@ -1020,11 +860,11 @@ def _trigger_manual_send(source):
 
             _log('INFO', f'Manual send fan-out: {",".join(targets)}')
 
-            if 'vpinleaders' in targets:
+            if 'vpinplay' in targets:
                 try:
-                    send_score(rom, score, screenshot_image=screenshot, vpx_file=vpx_file)
+                    send_vpinplay_score(rom, score, vpx_file=vpx_file)
                 except Exception as e:
-                    _log('ERROR', f'VPinLeaders submission raised: {e}')
+                    _log('ERROR', f'VPinPlay submission raised: {e}')
 
             if 'wovp' in targets:
                 try:
@@ -1037,12 +877,6 @@ def _trigger_manual_send(source):
                     send_iscored_score(rom, score, vpx_file=vpx_file, screenshot_image=screenshot)
                 except Exception as e:
                     _log('ERROR', f'iScored submission raised: {e}')
-
-            if 'vpinplay' in targets:
-                try:
-                    send_vpinplay_score(rom, score, vpx_file=vpx_file)
-                except Exception as e:
-                    _log('ERROR', f'VPinPlay submission raised: {e}')
         finally:
             with _manual_send_lock:
                 _manual_send_inflight = False
@@ -1504,15 +1338,10 @@ def _stop_manual_send_listeners():
 
 
 def _any_integration_enabled() -> bool:
-    return bool(VPINLEADERS_ENABLED or WOVP_ENABLED or ISCORED_ENABLED or VPINPLAY_ENABLED)
+    return bool(VPINPLAY_ENABLED or WOVP_ENABLED or ISCORED_ENABLED)
 
 
 def _integration_configured(name: str) -> bool:
-    if name == 'vpinleaders':
-        return bool(
-            config.get('vpinleaders', 'machine_id', fallback='').strip()
-            and config.get('vpinleaders', 'api_key', fallback='').strip()
-        )
     if name == 'wovp':
         return bool(config.get('wovp', 'api_key', fallback='').strip())
     if name == 'iscored':
@@ -1522,7 +1351,6 @@ def _integration_configured(name: str) -> bool:
             config.get('vpinplay', 'api_url', fallback='').strip()
             and config.get('vpinplay', 'user_id', fallback='').strip()
             and config.get('vpinplay', 'initials', fallback='').strip()
-            and len(config.get('vpinplay', 'machine_id', fallback='').strip()) == 64
         )
     return False
 
@@ -1534,20 +1362,6 @@ def _refresh_manual_send_listeners():
         _start_manual_send_listeners()
     else:
         _stop_manual_send_listeners()
-
-
-def _show_missing_config_and_exit(config_path: str):
-    message = _missing_config_message(config_path)
-    print(f'ERROR: {message}', file=sys.stderr)
-    if not HEADLESS_MODE:
-        try:
-            from PyQt6.QtWidgets import QApplication, QMessageBox
-            app = QApplication(sys.argv)
-            app.setQuitOnLastWindowClosed(False)
-            QMessageBox.critical(None, 'VPinLeaders Configuration Missing', message)
-        except Exception:
-            pass
-    sys.exit(1)
 
 
 def _load_wovp_challenges_sync():
@@ -1636,10 +1450,34 @@ def _refresh_iscored_games_bg():
 
 
 def _run_desktop_app():
-    from PyQt6.QtCore import QTimer, pyqtSignal
+    from PyQt6.QtCore import Qt, QTimer, pyqtSignal
     from PyQt6.QtGui import QAction, QActionGroup, QIcon
     from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
     from notifier import NotificationOverlay
+
+    def _set_macos_accessory_policy():
+        if platform.system() != 'Darwin':
+            return True
+        try:
+            from AppKit import NSApplication
+            ns_app = NSApplication.sharedApplication()
+            # Accessory keeps the tray-app feel while allowing normal windows.
+            ns_app.setActivationPolicy_(1)
+            return True
+        except Exception as exc:
+            _log('WARN', f'macOS accessory activation policy failed: {exc}')
+            return False
+
+    def _activate_app_for_dialog():
+        if platform.system() != 'Darwin':
+            return
+        try:
+            from AppKit import NSApplication
+            _set_macos_accessory_policy()
+            ns_app = NSApplication.sharedApplication()
+            ns_app.activateIgnoringOtherApps_(True)
+        except Exception as exc:
+            _log('WARN', f'macOS app activation for Settings failed: {exc}')
 
     class VPinScoreTray(QSystemTrayIcon):
         notify_requested = pyqtSignal(str, str, str)
@@ -1655,12 +1493,13 @@ def _run_desktop_app():
             self.iscored_games_loaded.connect(self._apply_iscored_games)
 
             self.menu = QMenu(parent)
+            self._settings_dialog = None
 
             # ── Integration toggles ────────────────────────────────────
-            self.act_vpinleaders_enable = QAction('Enable VPinLeaders', self.menu)
-            self.act_vpinleaders_enable.setCheckable(True)
-            self.act_vpinleaders_enable.triggered.connect(lambda: self._toggle_integration('vpinleaders'))
-            self.menu.addAction(self.act_vpinleaders_enable)
+            self.act_vpinplay_enable = QAction('Enable VPinPlay', self.menu)
+            self.act_vpinplay_enable.setCheckable(True)
+            self.act_vpinplay_enable.triggered.connect(lambda: self._toggle_integration('vpinplay'))
+            self.menu.addAction(self.act_vpinplay_enable)
 
             self.act_wovp_enable = QAction('Enable WoVP', self.menu)
             self.act_wovp_enable.setCheckable(True)
@@ -1671,11 +1510,6 @@ def _run_desktop_app():
             self.act_iscored_enable.setCheckable(True)
             self.act_iscored_enable.triggered.connect(lambda: self._toggle_integration('iscored'))
             self.menu.addAction(self.act_iscored_enable)
-
-            self.act_vpinplay_enable = QAction('Enable VPinPlay', self.menu)
-            self.act_vpinplay_enable.setCheckable(True)
-            self.act_vpinplay_enable.triggered.connect(lambda: self._toggle_integration('vpinplay'))
-            self.menu.addAction(self.act_vpinplay_enable)
 
             self.menu.addSeparator()
 
@@ -1696,8 +1530,6 @@ def _run_desktop_app():
 
             self._rebuild_challenges_menu(_preloaded_wovp_challenges)
             self._rebuild_games_menu(_preloaded_iscored_games)
-            # Capture is unconditional for VPinLeaders / WoVP; these actions
-            # only choose which monitor to capture.
             self._populate_screen_actions()
 
             self.act_settings = QAction('Settings…', self.menu)
@@ -1715,9 +1547,9 @@ def _run_desktop_app():
         def update_menu_state(self):
             from wovp_client import WovpClient
 
-            self.act_vpinleaders_enable.setChecked(VPINLEADERS_ENABLED)
-            self.act_vpinleaders_enable.setText(
-                'VPinLeaders Enabled' if VPINLEADERS_ENABLED else 'Enable VPinLeaders'
+            self.act_vpinplay_enable.setChecked(VPINPLAY_ENABLED)
+            self.act_vpinplay_enable.setText(
+                'VPinPlay Enabled' if VPINPLAY_ENABLED else 'Enable VPinPlay'
             )
             self.act_wovp_enable.setChecked(WOVP_ENABLED)
             self.act_wovp_enable.setText(
@@ -1726,10 +1558,6 @@ def _run_desktop_app():
             self.act_iscored_enable.setChecked(ISCORED_ENABLED)
             self.act_iscored_enable.setText(
                 'iScored Enabled' if ISCORED_ENABLED else 'Enable iScored'
-            )
-            self.act_vpinplay_enable.setChecked(VPINPLAY_ENABLED)
-            self.act_vpinplay_enable.setText(
-                'VPinPlay Enabled' if VPINPLAY_ENABLED else 'Enable VPinPlay'
             )
 
             # WoVP challenges: accessible whenever api_key is present so the user
@@ -1748,10 +1576,9 @@ def _run_desktop_app():
             # Tooltip summarises which integrations are live.
             enabled_labels = [
                 name for name, on in (
-                    ('VPinLeaders', VPINLEADERS_ENABLED),
+                    ('VPinPlay', VPINPLAY_ENABLED),
                     ('WoVP', WOVP_ENABLED),
                     ('iScored', ISCORED_ENABLED),
-                    ('VPinPlay', VPINPLAY_ENABLED),
                 ) if on
             ]
             if enabled_labels:
@@ -1766,13 +1593,12 @@ def _run_desktop_app():
             QTimer.singleShot(150, self.update_menu_state)
 
         def _toggle_integration(self, name):
-            global VPINLEADERS_ENABLED, WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED
+            global WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED
 
             currently_enabled = {
-                'vpinleaders': VPINLEADERS_ENABLED,
+                'vpinplay': VPINPLAY_ENABLED,
                 'wovp': WOVP_ENABLED,
                 'iscored': ISCORED_ENABLED,
-                'vpinplay': VPINPLAY_ENABLED,
             }.get(name)
             if currently_enabled is None:
                 return
@@ -1783,18 +1609,15 @@ def _run_desktop_app():
                 QTimer.singleShot(150, lambda n=name: self._open_integration_setup(n))
                 return
 
-            if name == 'vpinleaders':
-                VPINLEADERS_ENABLED = not VPINLEADERS_ENABLED
-                new_value = VPINLEADERS_ENABLED
+            if name == 'vpinplay':
+                VPINPLAY_ENABLED = not VPINPLAY_ENABLED
+                new_value = VPINPLAY_ENABLED
             elif name == 'wovp':
                 WOVP_ENABLED = not WOVP_ENABLED
                 new_value = WOVP_ENABLED
             elif name == 'iscored':
                 ISCORED_ENABLED = not ISCORED_ENABLED
                 new_value = ISCORED_ENABLED
-            elif name == 'vpinplay':
-                VPINPLAY_ENABLED = not VPINPLAY_ENABLED
-                new_value = VPINPLAY_ENABLED
             else:
                 return
 
@@ -1816,12 +1639,29 @@ def _run_desktop_app():
 
         def _show_settings_dialog(self):
             try:
-                from settings_ui import open_settings_dialog
+                from settings_ui import SettingsDialog
             except Exception as exc:
                 _log('ERROR', f'Settings dialog unavailable: {exc}')
                 return
-            saved = open_settings_dialog(CONFIG_PATH)
-            if saved:
+
+            if self._settings_dialog is not None and self._settings_dialog.isVisible():
+                _log('INFO', 'Settings dialog already open; raising existing window')
+                self._settings_dialog.raise_()
+                self._settings_dialog.activateWindow()
+                return
+
+            _log('INFO', 'Opening settings dialog')
+            try:
+                dlg = SettingsDialog(CONFIG_PATH)
+                dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+                self._settings_dialog = dlg
+                _log('INFO', 'Settings dialog constructed')
+            except Exception as exc:
+                _log('ERROR', f'Settings dialog construction failed: {exc}')
+                self._settings_dialog = None
+                return
+
+            def _on_saved():
                 load_config()
                 self._populate_screen_actions()
                 _refresh_manual_send_listeners()
@@ -1834,7 +1674,21 @@ def _run_desktop_app():
                 else:
                     self._apply_iscored_games([])
                 _log('INFO', 'Settings updated; config reloaded')
-            self._defer_menu_update()
+                self._defer_menu_update()
+
+            def _on_finished(_result):
+                _log('INFO', 'Settings dialog closed')
+                self._settings_dialog = None
+                self._defer_menu_update()
+
+            dlg.accepted.connect(_on_saved)
+            dlg.finished.connect(_on_finished)
+            _activate_app_for_dialog()
+            dlg.show()
+            dlg.raise_()
+            dlg.activateWindow()
+            QApplication.processEvents()
+            _log('INFO', f'Settings dialog show requested; visible={dlg.isVisible()}')
 
         def _open_integration_setup(self, name):
             try:
@@ -2021,15 +1875,13 @@ def _run_desktop_app():
             try:
                 from wovp_client import WovpClient
                 parts = []
-                if VPINLEADERS_ENABLED:
-                    parts.append('VPinLeaders')
+                if VPINPLAY_ENABLED:
+                    parts.append('VPinPlay')
                 if WOVP_ENABLED:
                     _, name = WovpClient(CONFIG_PATH).get_selected_challenge()
                     parts.append(f"WoVP: {name or 'no challenge'}")
                 if ISCORED_ENABLED:
                     parts.append('iScored')
-                if VPINPLAY_ENABLED:
-                    parts.append('VPinPlay')
                 self.setToolTip('VPinLeaders Client | ' + (', '.join(parts) or 'idle'))
             except Exception:
                 pass
@@ -2042,12 +1894,10 @@ def _run_desktop_app():
                     pass
 
             self.active_notification = NotificationOverlay(title, message, kind=kind)
-            self.active_notification.show()
-            self.active_notification.raise_()
-            QApplication.processEvents()
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    _set_macos_accessory_policy()
     signal_timer = _install_desktop_signal_handlers(app, QTimer)
 
     path_to_icon = resource_path('assets/icon.png')
@@ -2068,10 +1918,9 @@ def _run_desktop_app():
 
     enabled_labels = ','.join(
         name for name, on in (
-            ('vpinleaders', VPINLEADERS_ENABLED),
+            ('vpinplay', VPINPLAY_ENABLED),
             ('wovp', WOVP_ENABLED),
             ('iscored', ISCORED_ENABLED),
-            ('vpinplay', VPINPLAY_ENABLED),
         ) if on
     ) or 'none'
     _log(
@@ -2086,6 +1935,16 @@ def _run_desktop_app():
     source_thread = threading.Thread(target=run_nvram_monitor, daemon=True)
     source_thread.start()
 
+    if _SCORE_OCR_AVAILABLE:
+        def _warmup_ocr():
+            _log('INFO', 'Pre-loading EasyOCR model for screenshot score detection...')
+            try:
+                _score_ocr.warmup()
+                _log('INFO', 'EasyOCR model ready')
+            except Exception as e:
+                _log('WARN', f'EasyOCR warmup failed (OCR will still work, first call may be slow): {e}')
+        threading.Thread(target=_warmup_ocr, daemon=True).start()
+
     _refresh_manual_send_listeners()
     if not _any_integration_enabled():
         _log('INFO', 'No integration enabled — manual send listeners are idle')
@@ -2094,53 +1953,29 @@ def _run_desktop_app():
     return app.exec()
 
 
-def _run_headless():
-    _set_notification_sink(None)
-    _install_headless_signal_handlers()
-    if _any_integration_enabled():
-        _log(
-            'WARN',
-            'Manual send is the only supported flow; scores will not be auto-submitted in headless mode',
-        )
-    _log('INFO', 'Running in headless mode')
-    run_nvram_monitor()
-
-
 if __name__ == '__main__':
     CONFIG_OVERRIDE_PATH = _extract_config_override(sys.argv[1:])
-    HEADLESS_MODE = _has_flag(sys.argv[1:], '--headless')
 
     _config_path_at_start = _config_path()
     _config_exists_at_start = os.path.exists(_config_path_at_start)
 
     if not _config_exists_at_start:
-        # Desktop fresh install → wizard creates the config from scratch.
-        # Batocera / headless → keep the CLI seed-then-register flow.
-        if not HEADLESS_MODE and not _is_batocera():
-            try:
-                from settings_ui import run_first_run_wizard
-                if not run_first_run_wizard(_config_path_at_start):
-                    print('Setup cancelled. Exiting.', file=sys.stderr)
-                    sys.exit(0)
-            except Exception as exc:
-                print(f'ERROR: first-run wizard failed: {exc}', file=sys.stderr)
-                sys.exit(1)
-        else:
-            if not _ensure_config_seeded() and not os.path.exists(_config_path_at_start):
-                _show_missing_config_and_exit(_config_path_at_start)
+        try:
+            from settings_ui import run_first_run_wizard
+            if not run_first_run_wizard(_config_path_at_start):
+                print('Setup cancelled. Exiting.', file=sys.stderr)
+                sys.exit(0)
+        except Exception as exc:
+            print(f'ERROR: first-run wizard failed: {exc}', file=sys.stderr)
+            sys.exit(1)
 
     load_config()
 
     required = [('nvram.base_dir', NVRAM_DIR)]
-    if VPINLEADERS_ENABLED:
-        required += [('api_key', API_KEY), ('machine_id', MACHINE_ID)]
     missing = [k for k, v in required if not v or not v.strip()]
     if missing:
         _log('ERROR', f"Missing required config value(s): {', '.join(missing)}")
         sys.exit(1)
 
-    if HEADLESS_MODE:
-        _run_headless()
-    else:
-        preload_tray_data()
-        sys.exit(_run_desktop_app())
+    preload_tray_data()
+    sys.exit(_run_desktop_app())

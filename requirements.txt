@@ -8,7 +8,6 @@ opencv-python
 dbus-next
 mss
 pygame
-qrcode
 pyobjc; sys_platform == "darwin"
 frida
 psutil

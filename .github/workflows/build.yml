@@ -6,61 +6,9 @@ on:
     tags: ["v*"]
     paths-ignore:
       - "README.md"
-      - "batocera/README.md"
-      - "batocera/vpinleaders-installer.sh"
   workflow_dispatch:
 
 jobs:
-  build-batocera-linux-x64:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            zip \
-            libegl1 \
-            libxkbcommon-x11-0 \
-            libdbus-1-3 \
-            libxcb-cursor0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-randr0 \
-            libxcb-render-util0 \
-            libxcb-shape0 \
-            libxcb-shm0 \
-            libxcb-sync1 \
-            libxcb-xfixes0 \
-            libxcb-xinerama0 \
-            libx11-xcb1 \
-            libgl1
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build Batocera bundle
-        run: |
-          chmod +x batocera/build-bundle.sh
-          ./batocera/build-bundle.sh
-
-      - name: Upload Batocera artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: vpinleaders-batocera-linux-x86_64.zip
-          path: dist/vpinleaders-batocera-linux-x86_64.zip
-          archive: false
-
   build-linux:
     runs-on: ubuntu-22.04
     steps:

@@ -4,7 +4,7 @@ VPinLeaders Client is a score tracker for Visual Pinball X (VPX) cabinets and de
 
 It currently supports:
 
-- VPinLeaders leaderboard
+- VPinPlay local/network sync
 - WoVP challenges
 - iScored gamerooms
 
@@ -14,23 +14,17 @@ The client runs in the background monitoring PinMAME/NVRAM directly from Visual 
 
 You need:
 
-- A VPinLeaders account at [vpinleaders.com](https://www.vpinleaders.com)
 - A VPX 10.8.1 setup 
 - The latest GitHub Actions artifact for your operating system
 
 Your tables folder should follow the
 [VPX 10.8.1 File Layout](https://github.com/vpinball/vpinball/blob/master/docs/FileLayout.md).
 
-Create your account first:
-
-- [https://www.vpinleaders.com](https://www.vpinleaders.com)
-
-Then open the latest successful workflow run in the repo Actions tab and download the artifact for your platform:
+Open the latest successful workflow run in the repo Actions tab and download the artifact for your platform:
 
 - macOS arm64: `VPinLeaders-macOS-arm64.zip`
 - Windows x64: `VPinLeaders-Windows-x64.zip`
 - Linux x64: `VPinLeaders-Linux-x64.zip`
-- Batocera x64: follow [batocera/README.md](batocera/README.md)
 
 ## Platform Setup
 
@@ -43,13 +37,7 @@ Then open the latest successful workflow run in the repo Actions tab and downloa
 xattr -d com.apple.quarantine VPinLeaders-macOS-arm64
 ```
 
-3. Run the client:
-
-```bash
-./VPinLeaders-macOS-arm64 --register --machine-id YOUR_MACHINE_ID --nvrams-folder /Your/tables/folder
-```
-
-After registration, start it normally:
+3. Run the client and complete the first-run setup:
 
 ```bash
 ./VPinLeaders-macOS-arm64
@@ -60,13 +48,7 @@ After registration, start it normally:
 1. Download `VPinLeaders-Windows-x64.zip`
 2. Right-click the downloaded `.zip`, open `Properties`, and click `Unblock`
 3. Unzip it
-4. Run registration:
-
-```powershell
-.\VPinLeaders-Windows-x64.exe --register --machine-id YOUR_MACHINE_ID --nvrams-folder C:\Your\tables\folder
-```
-
-After registration, start it normally:
+4. Run the app and complete the first-run setup:
 
 ```powershell
 .\VPinLeaders-Windows-x64.exe
@@ -75,14 +57,7 @@ After registration, start it normally:
 ### Linux x64
 
 1. Unzip `VPinLeaders-Linux-x64.zip`
-2. Run registration with the regular binary:
-
-```bash
-./VPinLeaders-Linux-x64/VPinLeaders-Linux-x64 --register --machine-id YOUR_MACHINE_ID --nvrams-folder /Your/tables/folder
-
-```
-
-3. Start the app with the bundled launcher:
+2. Start the app with the bundled launcher and complete the first-run setup:
 
 ```bash
 ./vpinleaders-start.sh
@@ -96,23 +71,33 @@ sudo setcap cap_sys_ptrace=eip /path/to/VPinLeaders-Linux-x64/VPinLeaders-Linux-
 
 You may be prompted for `sudo` the first time the launcher runs.
 
-## Registration And Configuration
+## Configuration
 
-Registration creates the config file automatically in the correct location:
+First-run setup creates the config file automatically in the correct location:
 
 - Linux: `~/.config/vpinleaders-client/config.ini`
 - macOS: `~/Library/Application Support/vpinleaders-client/config.ini`
 - Windows: `%APPDATA%\vpinleaders-client\config.ini`
 
 After the first run, use the tray menu to open `Settings`. From there you can
-enable integrations, choose the display used for screenshots, and register
-VPinLeaders again if needed.
+enable integrations and choose the display used for screenshots.
 
-### VPinLeaders
+### VPinPlay
 
-VPinLeaders connects your VPX setup to the VPinLeaders leaderboard. Register
-the client during first setup, or open `Settings` and click `Register` to start
-the QR code flow again.
+VPinPlay lets the client sync scores to your own local or network VPinPlay
+instance.
+
+To configure it:
+
+1. Start your VPinPlay instance.
+2. Open the client tray menu.
+3. Choose `Settings`.
+4. Enable `VPinPlay`.
+5. Enter the VPinPlay URL, user ID, and initials. If VPinFE is installed, the
+   client loads these values from `vpinfe.ini`.
+6. Turn on automatic VPinPlay sending if you want scores synced as soon as a
+   game ends.
+7. Save the settings.
 
 ### WoVP Challenges
 
@@ -161,7 +146,6 @@ If you want to run from source instead of the packaged artifacts:
 
 ```bash
 pip install -r requirements.txt
-python3 main.py --register --machine-id YOUR_MACHINE_ID --nvrams-folder /Your/tables/folder
 python3 main.py
 ```
 
@@ -184,7 +168,7 @@ licensed under the GNU Lesser General Public License v3.0 (LGPL-3.0).
 The upstream map files are included unmodified where available.  A local fork
 is maintained here for two reasons:
 
-1. **Extended maps** — some ROMs required for VPinLeaders are not yet covered
+1. **Extended maps** — some ROMs are not yet covered
    by the upstream project, or need additional `game_state` fields (live ball,
    player and score tracking) that go beyond its current scope.
 2. **Custom conventions** — a few maps deviate slightly from the upstream
