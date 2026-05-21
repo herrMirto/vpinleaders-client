@@ -17,6 +17,12 @@ DEFAULT_API_URL = "http://localhost:8888"
 CLIENT_VERSION = "1.0"
 
 
+class VPinPlayResolveError(ValueError):
+    def __init__(self, message: str, diagnostics: Optional[dict] = None):
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
+
+
 def generate_machine_id() -> str:
     return secrets.token_hex(32)
 
@@ -208,6 +214,16 @@ class VPinPlayClient:
                 break
         return matches[0] if len(matches) == 1 else ""
 
+    def _resolve_vpx_path(self, vpx_file: str, vpx_path: str = "") -> str:
+        if vpx_path:
+            expanded = os.path.abspath(os.path.expanduser(vpx_path)) if os.path.isabs(vpx_path) else vpx_path
+            if os.path.exists(expanded):
+                return expanded
+            found = self._find_vpx_path(vpx_path)
+            if found:
+                return found
+        return self._find_vpx_path(vpx_file)
+
     @staticmethod
     def _tokens(value: str) -> set:
         return {
@@ -216,17 +232,61 @@ class VPinPlayClient:
             if len(tok) >= 3
         }
 
+    @staticmethod
+    def _candidate_summary(items: List[dict]) -> List[dict]:
+        out = []
+        for item in items[:5]:
+            out.append(
+                {
+                    "name": str(item.get("name") or ""),
+                    "vpsId": str(item.get("vpsId") or ""),
+                    "rom": str(item.get("rom") or item.get("romName") or ""),
+                }
+            )
+        return out
+
+    @staticmethod
+    def _single_unique_vps_id(items: List[dict]) -> str:
+        ids = {
+            str(item.get("vpsId") or "").strip()
+            for item in items
+            if str(item.get("vpsId") or "").strip()
+        }
+        return next(iter(ids)) if len(ids) == 1 else ""
+
     def _get(self, path: str, params: Optional[dict] = None) -> dict:
         resp = requests.get(self._url(path), params=params or {}, timeout=8)
         resp.raise_for_status()
         return resp.json()
 
     def resolve_vps_id(self, rom: str, vpx_file: str = "", vpx_path: str = "", filehash: str = "") -> Dict[str, str]:
+        diagnostics = {
+            "rom": rom,
+            "vpx_file": vpx_file,
+            "vpx_path": vpx_path,
+            "filehash": filehash,
+            "attempts": [],
+        }
+
         if filehash:
-            data = self._get(f"/api/v1/tables/by-filehash/{filehash}")
-            vps_id = str(data.get("vpsId") or "").strip()
-            if vps_id:
-                return {"vpsId": vps_id, "method": "filehash", "filehash": filehash}
+            try:
+                data = self._get(f"/api/v1/tables/by-filehash/{filehash}")
+                vps_id = str(data.get("vpsId") or "").strip()
+                diagnostics["attempts"].append(
+                    {
+                        "method": "filehash",
+                        "found": bool(vps_id),
+                        "vpsId": vps_id,
+                    }
+                )
+                if vps_id:
+                    return {"vpsId": vps_id, "method": "filehash", "filehash": filehash, "diagnostics": diagnostics}
+            except Exception as exc:
+                diagnostics["attempts"].append(
+                    {"method": "filehash", "error": f"{exc.__class__.__name__}: {exc}"}
+                )
+        else:
+            diagnostics["attempts"].append({"method": "filehash", "skipped": "no filehash"})
 
         clean_name = self._clean_table_name(vpx_file)
         search_terms: List[str] = []
@@ -234,31 +294,91 @@ class VPinPlayClient:
             term = re.sub(r"\s+", " ", term).strip()
             if term and term not in search_terms:
                 search_terms.append(term)
+        diagnostics["search_terms"] = list(search_terms)
 
         for term in search_terms:
-            data = self._get(
-                "/api/v1/tables-plus/search",
-                {"search_key": "name", "search_term": term, "limit": 5},
-            )
-            items = data.get("items") or []
-            match = self._best_name_match(term, items)
-            if match:
-                return {"vpsId": match["vpsId"], "method": "tables-plus", "filehash": filehash}
+            try:
+                data = self._get(
+                    "/api/v1/tables-plus/search",
+                    {"search_key": "name", "search_term": term, "limit": 5},
+                )
+                items = data.get("items") or []
+                match = self._best_name_match(term, items)
+                diagnostics["attempts"].append(
+                    {
+                        "method": "tables-plus",
+                        "term": term,
+                        "item_count": len(items),
+                        "candidates": self._candidate_summary(items),
+                        "matched": bool(match),
+                    }
+                )
+                if match:
+                    return {
+                        "vpsId": match["vpsId"],
+                        "method": "tables-plus",
+                        "filehash": filehash,
+                        "diagnostics": diagnostics,
+                    }
+            except Exception as exc:
+                diagnostics["attempts"].append(
+                    {"method": "tables-plus", "term": term, "error": f"{exc.__class__.__name__}: {exc}"}
+                )
 
         for term in search_terms:
-            data = self._get("/api/v1/vpsdb/search", {"q": term, "limit": 10})
-            items = data.get("items") or []
-            match = self._best_name_match(term, items)
-            if match:
-                return {"vpsId": match["vpsId"], "method": "vpsdb-search", "filehash": filehash}
+            try:
+                data = self._get("/api/v1/vpsdb/search", {"q": term, "limit": 10})
+                items = data.get("items") or []
+                match = self._best_name_match(term, items)
+                diagnostics["attempts"].append(
+                    {
+                        "method": "vpsdb-search",
+                        "term": term,
+                        "item_count": len(items),
+                        "candidates": self._candidate_summary(items),
+                        "matched": bool(match),
+                    }
+                )
+                if match:
+                    return {
+                        "vpsId": match["vpsId"],
+                        "method": "vpsdb-search",
+                        "filehash": filehash,
+                        "diagnostics": diagnostics,
+                    }
+            except Exception as exc:
+                diagnostics["attempts"].append(
+                    {"method": "vpsdb-search", "term": term, "error": f"{exc.__class__.__name__}: {exc}"}
+                )
 
         if rom:
-            data = self._get(f"/api/v1/tables/by-rom/{rom}", {"limit": 5})
-            items = data.get("items") or []
-            if len(items) == 1 and items[0].get("vpsId"):
-                return {"vpsId": items[0]["vpsId"], "method": "rom", "filehash": filehash}
+            try:
+                data = self._get(f"/api/v1/tables/by-rom/{rom}", {"limit": 5})
+                items = data.get("items") or []
+                unique_vps_id = self._single_unique_vps_id(items)
+                diagnostics["attempts"].append(
+                    {
+                        "method": "rom",
+                        "rom": rom,
+                        "item_count": len(items),
+                        "candidates": self._candidate_summary(items),
+                        "matched": bool(unique_vps_id),
+                        "unique_vpsId": unique_vps_id,
+                    }
+                )
+                if unique_vps_id:
+                    return {
+                        "vpsId": unique_vps_id,
+                        "method": "rom",
+                        "filehash": filehash,
+                        "diagnostics": diagnostics,
+                    }
+            except Exception as exc:
+                diagnostics["attempts"].append(
+                    {"method": "rom", "rom": rom, "error": f"{exc.__class__.__name__}: {exc}"}
+                )
 
-        return {"vpsId": "", "method": "", "filehash": filehash}
+        return {"vpsId": "", "method": "", "filehash": filehash, "diagnostics": diagnostics}
 
     def _best_name_match(self, search_term: str, items: List[dict]) -> Optional[dict]:
         if not items:
@@ -286,8 +406,7 @@ class VPinPlayClient:
         if not self.is_ready():
             raise ValueError("VPinPlay is not configured.")
 
-        if not vpx_path:
-            vpx_path = self._find_vpx_path(vpx_file)
+        vpx_path = self._resolve_vpx_path(vpx_file=vpx_file, vpx_path=vpx_path)
 
         filehash = ""
         if vpx_path and os.path.exists(vpx_path):
@@ -299,7 +418,10 @@ class VPinPlayClient:
         resolved = self.resolve_vps_id(rom=rom, vpx_file=vpx_file, vpx_path=vpx_path, filehash=filehash)
         vps_id = resolved.get("vpsId", "")
         if not vps_id:
-            raise ValueError(f"Could not resolve VPinPlay VPS ID for {vpx_file or rom}.")
+            raise VPinPlayResolveError(
+                f"Could not resolve VPinPlay VPS ID for {vpx_file or rom}.",
+                diagnostics=resolved.get("diagnostics") or {},
+            )
 
         now = datetime.now(timezone.utc).isoformat()
         filename = os.path.basename(vpx_path or vpx_file or f"{rom}.vpx")

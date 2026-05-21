@@ -1,4 +1,5 @@
 import configparser
+import json
 import os
 import platform
 import signal
@@ -129,6 +130,8 @@ _nvram_monitor_ref = None
 _tray_ref = None
 _preloaded_wovp_challenges = []
 _preloaded_iscored_games = []
+_nvram_monitor_thread = None
+_nvram_monitor_lock = threading.Lock()
 
 # Last known score for manual mode triggers.
 # _last_score_vpx_file is snapshotted at game-end time so manual sends always
@@ -176,11 +179,6 @@ def _get_best_available_rom() -> str:
     """Return the best ROM name we can determine right now (may be empty)."""
     monitor = _nvram_monitor_ref
     if monitor is not None:
-        try:
-            if monitor._unsupported_active_rom:
-                return monitor._unsupported_active_rom
-        except AttributeError:
-            pass
         try:
             if monitor.active_rom:
                 return monitor.active_rom
@@ -605,12 +603,13 @@ def send_iscored_score(table_name, score, vpx_file: str = '', screenshot_image=N
 # VPINPLAY SUBMISSION
 # =========================
 def send_vpinplay_score(table_name, score, vpx_file: str = ''):
-    from vpinplay_client import VPinPlayClient
+    from vpinplay_client import VPinPlayClient, VPinPlayResolveError
 
     clean_score = _normalize_score(score)
     if clean_score <= 0:
         return
 
+    effective_path = ''
     try:
         client = VPinPlayClient(CONFIG_PATH)
         if not client.is_ready():
@@ -618,12 +617,18 @@ def send_vpinplay_score(table_name, score, vpx_file: str = ''):
             show_notification('VPinPlay Send Failed', 'Check VPinPlay settings.', kind='error')
             return
 
-        effective_path = ''
         if _nvram_monitor_ref is not None and _nvram_monitor_ref.last_detected_table_path:
             detected_path = _nvram_monitor_ref.last_detected_table_path
             if not vpx_file or os.path.basename(detected_path) == vpx_file:
                 effective_path = detected_path
 
+        _log(
+            'INFO',
+            (
+                f"VPinPlay: preparing score submission; rom={table_name}; "
+                f"score={clean_score}; vpx={vpx_file or 'unknown'}; path={effective_path or 'auto-resolve'}"
+            ),
+        )
         result = client.submit_score_snapshot(
             rom=table_name,
             score=clean_score,
@@ -631,13 +636,47 @@ def send_vpinplay_score(table_name, score, vpx_file: str = ''):
             vpx_path=effective_path,
         )
         if result.get('success'):
-            _log('INFO', f"VPinPlay: score synced for {table_name} ({result.get('message')})")
+            _log(
+                'INFO',
+                (
+                    f"VPinPlay: score synced for {table_name}; score={clean_score}; "
+                    f"vpx={vpx_file or 'unknown'}; vpsId={result.get('vpsId') or 'unknown'}; "
+                    f"message={result.get('message')}"
+                ),
+            )
             show_notification('VPinPlay', clean_score)
         else:
-            _log('ERROR', f'VPinPlay sync failed: {result}')
+            _log(
+                'ERROR',
+                (
+                    f"VPinPlay sync failed for {table_name}; score={clean_score}; "
+                    f"vpx={vpx_file or 'unknown'}; path={effective_path or 'unknown'}; result={result}"
+                ),
+            )
             show_notification('VPinPlay Send Failed', result.get('message') or 'VPinPlay sync failed.', kind='error')
+    except VPinPlayResolveError as e:
+        diagnostics = getattr(e, 'diagnostics', {}) or {}
+        try:
+            detail = json.dumps(diagnostics, ensure_ascii=True, sort_keys=True)
+        except Exception:
+            detail = repr(diagnostics)
+        _log(
+            'ERROR',
+            (
+                f"VPinPlay submission failed while resolving VPS ID for {table_name}; "
+                f"score={clean_score}; vpx={vpx_file or 'unknown'}; "
+                f"path={effective_path or 'unknown'}; error={e}; diagnostics={detail}"
+            ),
+        )
+        show_notification('VPinPlay Send Failed', str(e), kind='error')
     except Exception as e:
-        _log('ERROR', f'VPinPlay submission failed: {e}')
+        _log(
+            'ERROR',
+            (
+                f"VPinPlay submission failed for {table_name}; score={clean_score}; "
+                f"vpx={vpx_file or 'unknown'}; path={effective_path or 'unknown'}; error={e}"
+            ),
+        )
         show_notification('VPinPlay Send Failed', str(e), kind='error')
 
 
@@ -694,7 +733,7 @@ def handle_game_end_event(rom_name, scores, reason='', game_duration=None):
         return
 
     _log('INFO', f'Game over detected: {rom_name} (reason={reason}, duration={game_duration})')
-    _log('INFO', f'Final score selected for {rom_name}')
+    _log('INFO', f'Final score selected for {rom_name}: {best_score}')
 
     # Snapshot the VPX filename NOW, while the right table is still the active process.
     # Manual sends may arrive seconds or minutes later when a different table is loaded.
@@ -743,6 +782,59 @@ def run_nvram_monitor():
     )
     _nvram_monitor_ref = monitor
     monitor.run_forever()
+
+
+def _nvram_monitor_config_signature():
+    return (
+        os.path.abspath(os.path.expanduser(NVRAM_DIR or '')),
+        NVRAM_SCAN_PATTERN,
+        bool(NVRAM_LIVE_PINMAME),
+        float(NVRAM_POLL_INTERVAL_SEC),
+        float(NVRAM_GAME_END_STABLE_SEC),
+        float(NVRAM_IDLE_END_SEC),
+        float(MIN_GAME_DURATION_SEC),
+    )
+
+
+def _start_nvram_monitor():
+    global _nvram_monitor_thread
+    with _nvram_monitor_lock:
+        if _nvram_monitor_thread is not None and _nvram_monitor_thread.is_alive():
+            return
+        _log('INFO', 'Starting source thread: nvram')
+        _nvram_monitor_thread = threading.Thread(target=run_nvram_monitor, daemon=True)
+        _nvram_monitor_thread.start()
+
+
+def _stop_nvram_monitor(timeout=3.0):
+    global _nvram_monitor_ref, _nvram_monitor_thread
+    with _nvram_monitor_lock:
+        monitor = _nvram_monitor_ref
+        thread = _nvram_monitor_thread
+        if monitor is not None:
+            try:
+                monitor.stop()
+            except Exception as e:
+                _log('WARN', f'Could not stop NVRAM monitor cleanly: {e}')
+
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=timeout)
+        if thread.is_alive():
+            _log('WARN', 'NVRAM monitor did not stop before timeout; keeping existing monitor')
+            return False
+
+    with _nvram_monitor_lock:
+        if _nvram_monitor_thread is thread:
+            _nvram_monitor_thread = None
+        if _nvram_monitor_ref is monitor:
+            _nvram_monitor_ref = None
+    return True
+
+
+def _restart_nvram_monitor():
+    _log('INFO', 'Restarting NVRAM monitor after settings change')
+    if _stop_nvram_monitor():
+        _start_nvram_monitor()
 
 
 # =========================
@@ -1662,9 +1754,13 @@ def _run_desktop_app():
                 return
 
             def _on_saved():
+                old_monitor_config = _nvram_monitor_config_signature()
                 load_config()
+                new_monitor_config = _nvram_monitor_config_signature()
                 self._populate_screen_actions()
                 _refresh_manual_send_listeners()
+                if old_monitor_config != new_monitor_config:
+                    _restart_nvram_monitor()
                 if WOVP_ENABLED:
                     _refresh_wovp_challenges_bg()
                 else:
@@ -1931,9 +2027,7 @@ def _run_desktop_app():
         f'joystick={"on" if _joystick_binding_enabled() else "off"}',
     )
 
-    _log('INFO', 'Starting source thread: nvram')
-    source_thread = threading.Thread(target=run_nvram_monitor, daemon=True)
-    source_thread.start()
+    _start_nvram_monitor()
 
     if _SCORE_OCR_AVAILABLE:
         def _warmup_ocr():

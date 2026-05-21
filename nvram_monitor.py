@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import zlib
 from dataclasses import dataclass
@@ -448,7 +449,7 @@ class DescriptorDecoder:
 @dataclass
 class RomState:
     active: bool = False
-    session_best: int = 0
+    last_valid_score: int = 0
     last_best: int = 0
     last_scores: Tuple[int, ...] = tuple()
     last_change_ts: float = 0.0
@@ -497,6 +498,7 @@ class NVRAMMonitor:
         self.game_end_stable_sec = max(3.0, game_end_stable_sec)
         self.idle_end_sec = max(self.game_end_stable_sec, idle_end_sec)
         self.min_game_duration_sec = max(0.0, min_game_duration_sec)
+        self._stop_event = threading.Event()
 
         self._file_mtime: Dict[str, float] = {}
         self._file_crc32: Dict[str, int] = {}
@@ -522,9 +524,6 @@ class NVRAMMonitor:
         self._vpx_proc_cache_ts: float = 0.0
         self._last_unsupported_warn_by_rom: Dict[str, float] = {}
         self._rom_live_support_cache: Dict[str, Tuple[bool, str]] = {}
-        self._unsupported_active_rom: Optional[str] = None
-        self._unsupported_active_path: Optional[str] = None
-        self._unsupported_active_since: float = 0.0
         self._live_unsupported_by_rom: Dict[str, str] = {}
         self._last_live_unsupported_log_by_rom: Dict[str, float] = {}
         # Limit attach targets to known VPX renderer executables.
@@ -565,7 +564,7 @@ class NVRAMMonitor:
         if not st.active:
             return None
 
-        score = max(st.session_best, st.last_best, max(st.last_scores, default=0))
+        score = st.last_valid_score or st.last_best or max(st.last_scores, default=0)
         if score <= 0:
             return None
 
@@ -778,9 +777,9 @@ class NVRAMMonitor:
             # Keep active sessions alive for in-play false positives (for example,
             # transient game_over/ball signals between balls). Only clear state when
             # the table has actually exited.
-            if reason in ('vpx_play_exit', 'vpx_exit_unsupported_nvram'):
+            if reason == 'vpx_play_exit':
                 st.active = False
-                st.session_best = 0
+                st.last_valid_score = 0
                 st.session_start_ts = 0.0
                 st.has_nonstart_update = False
                 st.warned_no_disk_updates = False
@@ -791,10 +790,10 @@ class NVRAMMonitor:
                 st.last_change_ts = now
             return
 
-        best = max(st.session_best, parsed.get('best', 0))
-        if best <= 0:
+        final_score = st.last_valid_score or parsed.get('best', 0)
+        if final_score <= 0:
             st.active = False
-            st.session_best = 0
+            st.last_valid_score = 0
             st.session_start_ts = 0.0
             st.has_nonstart_update = False
             st.warned_no_disk_updates = False
@@ -803,9 +802,9 @@ class NVRAMMonitor:
             self._clear_active_monitoring(rom, force_wait_log=True)
             return
 
-        if st.last_sent_score == best and (now - st.last_sent_ts) < 15:
+        if st.last_sent_score == final_score and (now - st.last_sent_ts) < 15:
             st.active = False
-            st.session_best = 0
+            st.last_valid_score = 0
             st.session_start_ts = 0.0
             st.has_nonstart_update = False
             st.warned_no_disk_updates = False
@@ -814,7 +813,7 @@ class NVRAMMonitor:
             self._clear_active_monitoring(rom, force_wait_log=True)
             return
 
-        scores = parsed.get('scores') or [best]
+        scores = parsed.get('scores') or [final_score]
         final_scores = parsed.get('final_scores') or []
         if isinstance(final_scores, list) and final_scores:
             final_norm: List[int] = []
@@ -825,18 +824,25 @@ class NVRAMMonitor:
                     iv = 0
                 final_norm.append(max(0, iv))
             if parsed.get('game_over') is True:
-                session_ref = max(st.session_best, parsed.get('best', 0))
+                session_ref = final_score
                 final_best = max(final_norm, default=0)
                 # Use final_scores only when it is plausible for the active session.
                 if final_best > 0 and (session_ref <= 0 or final_best <= int(session_ref * 1.2) + 100000):
                     scores = final_norm
-                    best = max(best, final_best)
+                    final_score = final_best
+
+        try:
+            score_best = max(int(v) for v in scores)
+        except Exception:
+            score_best = 0
+        if final_score > score_best:
+            scores = list(scores) + [final_score]
 
         self.on_game_end(rom, scores, reason, int(duration))
-        st.last_sent_score = best
+        st.last_sent_score = final_score
         st.last_sent_ts = now
         st.active = False
-        st.session_best = 0
+        st.last_valid_score = 0
         st.session_start_ts = 0.0
         st.has_nonstart_update = False
         st.warned_no_disk_updates = False
@@ -870,7 +876,7 @@ class NVRAMMonitor:
             if force_start or not self._looks_nonplay_score_pattern(scores):
                 st.active = True
                 st.session_start_ts = now
-                st.session_best = best
+                st.last_valid_score = best
                 st.last_progress_ts = now
                 st.last_change_ts = now
                 st.baseline_match_counter = parsed.get('match_counter')
@@ -889,19 +895,19 @@ class NVRAMMonitor:
                 st.has_nonstart_update = True
                 st.warned_no_disk_updates = False
 
-            effective_best = best
+            effective_score = best
             looks_nonplay = self._looks_nonplay_score_pattern(scores)
             non_zero_scores = [v for v in scores if isinstance(v, int) and v > 0]
             is_mirrored_attract = len(non_zero_scores) >= 3 and len(set(non_zero_scores)) == 1
-            if is_mirrored_attract and st.session_best > 0:
+            if is_mirrored_attract and st.last_valid_score > 0:
                 st.attract_pattern_ts = now
-            if looks_nonplay and st.session_best > 0:
+            if looks_nonplay and st.last_valid_score > 0:
                 # Do not treat attract/high-score cycles as in-play score progress.
-                effective_best = st.session_best
+                effective_score = st.last_valid_score
 
-            if effective_best > st.session_best:
+            if effective_score > 0 and effective_score != st.last_valid_score:
                 st.last_progress_ts = now
-            st.session_best = max(st.session_best, effective_best)
+                st.last_valid_score = effective_score
 
             match_counter = parsed.get('match_counter')
             game_over = parsed.get('game_over')
@@ -951,7 +957,7 @@ class NVRAMMonitor:
                 game_over is True
                 and stable
                 and st.has_nonstart_update
-                and st.session_best > 0
+                and st.last_valid_score > 0
                 and progress_idle >= self.game_end_stable_sec
             ):
                 # Generic fallback when edge transitions were missed but end-of-game
@@ -959,11 +965,11 @@ class NVRAMMonitor:
                 self._maybe_emit_game_end(rom, st, parsed, 'game_over_latched')
             elif (
                 st.has_nonstart_update
-                and st.session_best > 0
+                and st.last_valid_score > 0
                 and progress_idle >= self.game_end_stable_sec
                 and final_best > 0
-                and final_best >= int(st.session_best * 0.80)
-                and best <= int(st.session_best * 0.25)
+                and final_best >= int(st.last_valid_score * 0.80)
+                and best <= int(st.last_valid_score * 0.25)
             ):
                 # Fallback for families where end-of-game DMD cycles keep changing
                 # "scores" rapidly (preventing score-stability checks), but final_scores
@@ -971,7 +977,7 @@ class NVRAMMonitor:
                 self._maybe_emit_game_end(rom, st, parsed, 'final_scores_no_progress')
             elif (
                 st.has_nonstart_update
-                and st.session_best > 0
+                and st.last_valid_score > 0
                 and st.attract_pattern_ts > 0
                 and (now - st.attract_pattern_ts) >= 2.0
                 and progress_idle >= self.game_end_stable_sec
@@ -1000,8 +1006,8 @@ class NVRAMMonitor:
             stable = now - st.last_change_ts
             if idle >= self.idle_end_sec and stable >= self.game_end_stable_sec:
                 parsed = {
-                    'scores': list(st.last_scores) if st.last_scores else [st.session_best],
-                    'best': max(st.session_best, st.last_best),
+                    'scores': list(st.last_scores) if st.last_scores else [st.last_valid_score],
+                    'best': st.last_valid_score or st.last_best,
                 }
                 self._maybe_emit_game_end(rom, st, parsed, 'idle_timeout')
                 if self.active_rom == rom:
@@ -1072,8 +1078,8 @@ class NVRAMMonitor:
 
         if parsed is None:
             parsed = {
-                'scores': list(st.last_scores) if st.last_scores else [st.session_best],
-                'best': max(st.session_best, st.last_best),
+                'scores': list(st.last_scores) if st.last_scores else [st.last_valid_score],
+                'best': st.last_valid_score or st.last_best,
             }
         self._maybe_emit_game_end(self.active_rom, st, parsed, 'vpx_play_exit')
         self.active_rom = None
@@ -1129,99 +1135,12 @@ class NVRAMMonitor:
         last = self._last_unsupported_warn_by_rom.get(rom, 0.0)
         if (now - last) < 30.0:
             return
-        is_ram_only = 'reads RAM' in (context or '')
-        if is_ram_only:
-            self._log('WARN', f'ROM "{rom}" doesn\'t support NVRAM reading.')
-            self._log('INFO', 'Close the table to send your scores.')
-            self._emit_status_message(
-                'ROM Not Supported',
-                f'ROM {rom} doesn\'t support NVRAM reading.\nClose the table to send your scores.',
-            )
-        else:
-            msg = f'ROM "{rom}" not supported'
-            if context:
-                msg = f'{msg} ({context})'
-            self._log('WARN', msg)
-            self._emit_status_message('ROM Not Supported', f'Rom {rom} not Support')
+        msg = f'ROM "{rom}" not supported'
+        if context:
+            msg = f'{msg} ({context})'
+        self._log('WARN', msg)
+        self._emit_status_message('ROM Not Supported', f'ROM {rom} is not supported yet.')
         self._last_unsupported_warn_by_rom[rom] = now
-
-    def _clear_unsupported_active(self):
-        self._unsupported_active_rom = None
-        self._unsupported_active_path = None
-        self._unsupported_active_since = 0.0
-
-    def _mark_unsupported_active(self, rom: str, path: str, reason: str = ''):
-        if self._unsupported_active_rom == rom and self._unsupported_active_path == path:
-            return
-        self._unsupported_active_rom = rom
-        self._unsupported_active_path = path
-        self._unsupported_active_since = time.time()
-        is_ram_only = 'reads RAM' in (reason or '')
-        if is_ram_only:
-            self._log('WARN', f'ROM "{rom}" doesn\'t support NVRAM reading.')
-            self._log('INFO', 'Close the table to send your scores.')
-            self._emit_status_message(
-                'ROM Not Supported',
-                f'ROM {rom} doesn\'t support NVRAM reading.\nClose the table to send your scores.',
-            )
-        else:
-            self._log('WARN', f'ROM "{rom}" not supported via NVRAM reading')
-            self._log('INFO', 'Score will be sent after closing VPX')
-            self._emit_status_message('ROM Not Supported', f'Rom {rom} not Support')
-
-    def _try_emit_unsupported_post_exit(self) -> bool:
-        rom = self._unsupported_active_rom
-        path = self._unsupported_active_path
-        if not rom or not path:
-            return False
-        if self._has_vpx_play_process():
-            return False
-
-        raw = self._read_file(path)
-        parsed = self._extract_game_state(rom, raw) if raw is not None else None
-        if not parsed:
-            self._log('WARN', f'Post-exit NVRAM parse failed for ROM "{rom}"')
-            self._clear_unsupported_active()
-            self._log_waiting(force=True)
-            return True
-
-        scores = parsed.get('scores') or []
-        best = parsed.get('best', 0)
-        if best <= 0 and scores:
-            norm_scores: List[int] = []
-            for v in scores:
-                try:
-                    iv = int(v)
-                except Exception:
-                    iv = 0
-                norm_scores.append(max(0, iv))
-            scores = norm_scores
-            best = max(norm_scores, default=0)
-        if best <= 0:
-            final_scores = parsed.get('final_scores') or []
-            if isinstance(final_scores, list) and final_scores:
-                norm_final: List[int] = []
-                for v in final_scores:
-                    try:
-                        iv = int(v)
-                    except Exception:
-                        iv = 0
-                    norm_final.append(max(0, iv))
-                if norm_final:
-                    scores = norm_final
-                    best = max(norm_final, default=0)
-
-        if best > 0:
-            payload = list(scores) if scores else [best]
-            self.on_game_end(rom, payload, 'vpx_exit_unsupported_nvram', None)
-            self._log('INFO', f'Post-exit score read from NVRAM for ROM "{rom}"')
-        else:
-            self._log('WARN', f'Post-exit NVRAM read for ROM "{rom}" did not contain a valid score')
-            self._log('WARN', f'ROM "{rom}" appears to keep player score in volatile RAM; no recoverable score in .nv after VPX exit')
-
-        self._clear_unsupported_active()
-        self._log_waiting(force=True)
-        return True
 
     @staticmethod
     def _desc_addresses(desc: dict) -> List[int]:
@@ -1264,6 +1183,70 @@ class NVRAMMonitor:
                 return t or None
         return None
 
+    def _game_state_descriptors(self, rom: str) -> List[dict]:
+        map_data = self.repo.map_for_rom(rom)
+        if not isinstance(map_data, dict):
+            return []
+        gs = map_data.get('game_state')
+        if not isinstance(gs, dict):
+            return []
+
+        out: List[dict] = []
+        for key in (
+            'scores',
+            'final_scores',
+            'game_over',
+            'current_ball',
+            'match_counter',
+            'player_count',
+            'current_player',
+            'ball_count',
+        ):
+            value = gs.get(key)
+            entries = value if isinstance(value, list) else [value]
+            for entry in entries:
+                if isinstance(entry, dict):
+                    out.append(entry)
+        return out
+
+    def _game_state_addresses(self, rom: str) -> List[int]:
+        seen = set()
+        out: List[int] = []
+        for desc in self._game_state_descriptors(rom):
+            encoding = (desc.get('encoding') or '').lower()
+            if encoding == 'dipsw':
+                continue
+            for addr in self._desc_addresses(desc):
+                if addr in seen:
+                    continue
+                seen.add(addr)
+                out.append(addr)
+        return out
+
+    def _game_state_uses_ram(self, rom: str) -> Tuple[bool, str]:
+        map_data = self.repo.map_for_rom(rom)
+        if not isinstance(map_data, dict):
+            return False, ''
+        platform_data = self.repo.platform_for_map(map_data) or {}
+        layout = platform_data.get('memory_layout')
+        if not isinstance(layout, list):
+            return False, ''
+
+        gs = map_data.get('game_state')
+        if not isinstance(gs, dict):
+            return False, ''
+
+        for key in ('scores', 'final_scores', 'game_over'):
+            value = gs.get(key)
+            entries = value if isinstance(value, list) else [value]
+            for desc in entries:
+                if not isinstance(desc, dict):
+                    continue
+                for addr in self._desc_addresses(desc):
+                    if self._addr_region_type(addr, layout) == 'ram':
+                        return True, f'game_state.{key} reads RAM (0x{addr:X})'
+        return False, ''
+
     def _supports_live_game_state(self, rom: str) -> Tuple[bool, str]:
         cached = self._rom_live_support_cache.get(rom)
         if cached is not None:
@@ -1288,11 +1271,9 @@ class NVRAMMonitor:
             self._rom_live_support_cache[rom] = out
             return out
 
-        # Support gate intentionally focuses on what we actually need:
-        # - live player scores from NVRAM
-        # - game_over from NVRAM when mapped
-        # Some families keep current_ball/current_player in RAM, and those should
-        # not make the whole ROM unsupported.
+        # Support gate intentionally focuses on what we actually need. RAM-backed
+        # descriptors are allowed here because newer PinMAME builds expose
+        # PinmameReadMainCPUByte, which lets the live bridge read those addresses.
         scores_desc = gs.get('scores')
         score_entries = scores_desc if isinstance(scores_desc, list) else [scores_desc]
         score_checked = 0
@@ -1303,27 +1284,11 @@ class NVRAMMonitor:
             if not addrs:
                 continue
             score_checked += 1
-            for a in addrs:
-                typ = self._addr_region_type(a, layout)
-                if typ == 'ram':
-                    out = (False, f'game_state.scores reads RAM (0x{a:X})')
-                    self._rom_live_support_cache[rom] = out
-                    return out
 
         if score_checked == 0:
             out = (False, 'missing game_state.scores descriptors')
             self._rom_live_support_cache[rom] = out
             return out
-
-        game_over_desc = gs.get('game_over')
-        if isinstance(game_over_desc, dict):
-            addrs = self._desc_addresses(game_over_desc)
-            for a in addrs:
-                typ = self._addr_region_type(a, layout)
-                if typ == 'ram':
-                    out = (False, f'game_state.game_over reads RAM (0x{a:X})')
-                    self._rom_live_support_cache[rom] = out
-                    return out
 
         out = (True, '')
         self._rom_live_support_cache[rom] = out
@@ -1810,11 +1775,17 @@ class NVRAMMonitor:
                 table_path = pid_table
             if not table_path:
                 continue
-            if table_path != self.last_detected_table_path:
-                self.last_detected_table_path = table_path
             table_dir = self._resolve_table_dir_from_arg(table_path)
             if not table_dir:
                 continue
+            detected_table_path = table_path
+            if not os.path.isabs(detected_table_path):
+                candidate_table_path = os.path.join(table_dir, os.path.basename(detected_table_path))
+                if os.path.exists(candidate_table_path):
+                    detected_table_path = candidate_table_path
+            detected_table_path = self._canon_path(detected_table_path)
+            if detected_table_path != self.last_detected_table_path:
+                self.last_detected_table_path = detected_table_path
 
             nv_dir = os.path.join(table_dir, 'pinmame', 'nvram')
             if not os.path.isdir(nv_dir):
@@ -1894,9 +1865,6 @@ class NVRAMMonitor:
         if not os.path.isdir(self.nvram_dir):
             return
 
-        if self._try_emit_unsupported_post_exit():
-            return
-
         candidate_paths = list(self._iter_nvram_paths())
         if not candidate_paths:
             return
@@ -1951,11 +1919,10 @@ class NVRAMMonitor:
                             continue
                         supported, reason = self._supports_live_game_state(rom)
                         if not supported:
-                            self._mark_unsupported_active(rom, active_path, reason)
+                            self._log_unsupported_rom(rom, reason)
                             continue
                         raw = self._read_file(active_path)
                         if raw is not None:
-                            self._clear_unsupported_active()
                             self.active_rom = rom
                             self.active_path = active_path
                             if open_paths:
@@ -1997,9 +1964,8 @@ class NVRAMMonitor:
         for path, _, rom, raw in changed:
             supported, reason = self._supports_live_game_state(rom)
             if not supported:
-                self._mark_unsupported_active(rom, path, reason)
+                self._log_unsupported_rom(rom, reason)
                 continue
-            self._clear_unsupported_active()
             self.active_rom = rom
             self.active_path = path
             self._log('INFO', f'NV "{os.path.basename(path)}" is active, monitoring ROM "{rom}"')
@@ -2157,7 +2123,25 @@ class NVRAMMonitor:
             pid_txt = str(active_pid) if active_pid is not None else 'n/a'
             self._log('INFO', f'Attempting Live PinMAME snapshot on pid={pid_txt} for ROM "{rom}"')
             self._last_live_snapshot_attempt_log_ts = now
-        raw = self._live_session.snapshot()
+
+        uses_ram, ram_reason = self._game_state_uses_ram(rom)
+        direct_mode = False
+        if uses_ram:
+            addresses = self._game_state_addresses(rom)
+            raw = self._live_session.main_cpu_snapshot(addresses)
+            direct_mode = raw is not None
+            if raw is None:
+                reason = self._live_session.last_error or 'unknown_main_cpu_snapshot_error'
+                if reason.startswith('pinmame_read_main_cpu_not_found'):
+                    self._mark_live_unsupported(rom, 'pinmame_read_main_cpu_not_found')
+                if (now - self._last_live_snapshot_err_ts) >= 10.0:
+                    pid_txt = str(active_pid) if active_pid is not None else 'n/a'
+                    context = ram_reason or 'RAM-backed game state'
+                    self._log('WARN', f'Live PinMAME main CPU read failed on pid {pid_txt} for {context}: {reason}')
+                    self._last_live_snapshot_err_ts = now
+                return False
+        else:
+            raw = self._live_session.snapshot()
         if raw is None:
             now = time.time()
             reason = self._live_session.last_error or 'unknown_snapshot_error'
@@ -2199,7 +2183,8 @@ class NVRAMMonitor:
                     'INFO',
                     (
                         f'Live PinMAME active for {rom} (pid={active_pid}), '
-                        f'no byte changes yet (bytes={self._live_session.last_count})'
+                        f'no byte changes yet (mode={self._live_session.last_mode or "nvram"}, '
+                        f'bytes={self._live_session.last_count})'
                     ),
                 )
                 self._last_live_unchanged_log_ts = now
@@ -2218,8 +2203,18 @@ class NVRAMMonitor:
                 path = f'<live-pinmame>/{rom}.nv'
             self.active_path = path
 
-        self._process_nvram_update(rom, path, raw, force_start=False)
+        if direct_mode:
+            parsed = self._extract_game_state(rom, raw, direct_mode=True)
+            if parsed:
+                self._handle_update(rom, parsed, force_start=False)
+        else:
+            self._process_nvram_update(rom, path, raw, force_start=False)
         return True
+
+    def stop(self):
+        self._stop_event.set()
+        if self._live_session is not None:
+            self._live_session.detach()
 
     def run_forever(self):
         self._log(
@@ -2234,14 +2229,17 @@ class NVRAMMonitor:
             self._log('WARN', 'Python package "frida" not installed; live PinMAME mode disabled until installed')
         self._prime_baseline()
         self._log_waiting(force=True)
-        while True:
+        while not self._stop_event.is_set():
             try:
                 self._scan_once()
                 self._check_idle_ends()
                 self._check_stale_disk_updates()
                 self._check_vpx_play_exit()
-                if self.active_rom is None and self._unsupported_active_rom is None:
+                if self.active_rom is None:
                     self._log_waiting(force=False)
             except Exception as e:
                 self._log('ERROR', f'NVRAM monitor loop error: {e}')
-            time.sleep(self.poll_interval_sec)
+            self._stop_event.wait(self.poll_interval_sec)
+        if self._live_session is not None:
+            self._live_session.detach()
+        self._log('INFO', 'NVRAM monitor stopped')

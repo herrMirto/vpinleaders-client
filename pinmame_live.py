@@ -7,8 +7,10 @@ var fnIsRunning = null;
 var fnGetMax = null;
 var fnGetNVRAM = null;
 var fnGetChangedNVRAM = null;
+var fnReadMainCPUByte = null;
 var nvramCache = null;
 var ensureError = null;
+var readMainCPUError = null;
 
 function _alloc(size) {
   if (typeof Memory !== "undefined" && Memory !== null && typeof Memory.alloc === "function") {
@@ -186,6 +188,27 @@ function _ensureFns() {
   return true;
 }
 
+function _ensureReadMainCPUFn() {
+  readMainCPUError = null;
+  if (fnIsRunning && fnReadMainCPUByte) return true;
+  if (typeof NativeFunction !== "function") {
+    readMainCPUError = "native_function_missing";
+    return false;
+  }
+  var p1 = _findExport("PinmameIsRunning");
+  var p2 = _findExport("PinmameReadMainCPUByte");
+  if (!p1 || !p2) {
+    readMainCPUError = (
+      "exports_missing:" + (!!p1) + "," + (!!p2) +
+      ":mods=" + _moduleDebugSummary()
+    );
+    return false;
+  }
+  fnIsRunning = new NativeFunction(p1, "int", []);
+  fnReadMainCPUByte = new NativeFunction(p2, "int", ["uint32", "pointer"]);
+  return true;
+}
+
 function _refreshFromFullDump(maxCount, stride) {
   var sub = "alloc";
   try {
@@ -219,6 +242,59 @@ function _toHex(data) {
 }
 
 rpc.exports = {
+  maincpusnapshot: function (addresses) {
+    var phase = "start";
+    try {
+      phase = "ensure_read_main_cpu";
+      if (!_ensureReadMainCPUFn()) {
+        return { ok: false, error: "pinmame_read_main_cpu_not_found", detail: readMainCPUError };
+      }
+
+      phase = "is_running";
+      var running = fnIsRunning();
+      if (!running) {
+        return { ok: false, error: "pinmame_not_running" };
+      }
+
+      if (!addresses || typeof addresses.length !== "number") {
+        return { ok: false, error: "invalid_addresses" };
+      }
+
+      phase = "read_bytes";
+      var bytePtr = _alloc(1);
+      var outAddrs = [];
+      var outValues = [];
+      var seen = {};
+      for (var i = 0; i < addresses.length; i++) {
+        var addr = Number(addresses[i]);
+        if (!isFinite(addr) || addr < 0 || addr > 0xFFFFFFFF) {
+          return { ok: false, error: "invalid_address", address: String(addresses[i]) };
+        }
+        addr = addr >>> 0;
+        var key = String(addr);
+        if (seen[key]) continue;
+        seen[key] = true;
+
+        var ok = fnReadMainCPUByte(addr, bytePtr);
+        if (!ok) {
+          return { ok: false, error: "main_cpu_read_failed", address: addr };
+        }
+        outAddrs.push(addr);
+        outValues.push(_readU8(bytePtr));
+      }
+
+      return {
+        ok: true,
+        mode: "main_cpu",
+        count: outAddrs.length,
+        addresses: outAddrs,
+        values: outValues
+      };
+    } catch (e) {
+      return { ok: false, error: "main_cpu_snapshot_exception", detail: String(e), phase: phase };
+    }
+  },
+
   snapshot: function () {
     var phase = "start";
     try {
@@ -402,6 +478,81 @@ class PinMameLiveSession:
             if warn and not self.last_error:
                 self.last_error = f"snapshot_warn:{warn}"
             return data
+
+    def main_cpu_snapshot(self, addresses) -> Optional[bytes]:
+        with self._lock:
+            script = self._script
+            if script is None:
+                self.last_error = "not_attached"
+                return None
+            try:
+                clean_addresses = []
+                seen = set()
+                for address in addresses:
+                    value = int(address)
+                    if value < 0 or value in seen:
+                        continue
+                    seen.add(value)
+                    clean_addresses.append(value)
+                clean_addresses.sort()
+            except Exception:
+                self.last_error = "invalid_main_cpu_addresses"
+                return None
+            if not clean_addresses:
+                self.last_error = "missing_main_cpu_addresses"
+                return None
+            max_addr = max(clean_addresses)
+            if max_addr > 0xFFFFFF:
+                self.last_error = f"main_cpu_address_too_large:0x{max_addr:X}"
+                return None
+            try:
+                out = script.exports_sync.maincpusnapshot(clean_addresses)
+            except Exception as e:
+                self.last_error = f"rpc_main_cpu_snapshot_failed:{e.__class__.__name__}:{e}"
+                return None
+            if not isinstance(out, dict):
+                self.last_error = "invalid_main_cpu_rpc_response"
+                return None
+            if not out.get("ok"):
+                err = str(out.get("error") or "main_cpu_snapshot_not_ok")
+                detail = out.get("detail")
+                if detail:
+                    err = f"{err}:{detail}"
+                phase = out.get("phase")
+                if phase:
+                    err = f"{err}:phase={phase}"
+                address = out.get("address")
+                if address is not None:
+                    try:
+                        err = f"{err}:address=0x{int(address):X}"
+                    except Exception:
+                        err = f"{err}:address={address}"
+                self.last_error = err
+                return None
+
+            out_addresses = out.get("addresses")
+            out_values = out.get("values")
+            if not isinstance(out_addresses, list) or not isinstance(out_values, list):
+                self.last_error = "invalid_main_cpu_payload"
+                return None
+            if len(out_addresses) != len(out_values):
+                self.last_error = "main_cpu_payload_length_mismatch"
+                return None
+
+            data = bytearray(max_addr + 1)
+            try:
+                for addr, value in zip(out_addresses, out_values):
+                    data[int(addr)] = int(value) & 0xFF
+            except Exception:
+                self.last_error = "invalid_main_cpu_payload_values"
+                return None
+
+            self.last_error = ""
+            self.last_count = len(out_addresses)
+            self.last_changed_count = -1
+            mode = out.get("mode")
+            self.last_mode = str(mode) if isinstance(mode, str) else "main_cpu"
+            return bytes(data)
 
     @property
     def has_frida(self) -> bool:
