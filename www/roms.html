@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Supported ROMs — VPinScore</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f6f8fa;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --muted: #57606a;
+      --accent: #0969da;
+      --green: #1a7f37;
+      --code-bg: #f6f8fa;
+      --radius: 6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.75;
+      font-size: 16px;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .logo {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo svg { color: var(--accent); }
+
+    nav { display: flex; gap: 20px; margin-left: auto; }
+
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.15s;
+    }
+
+    nav a:hover, nav a.active { color: var(--text); }
+
+    .page-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 36px 24px 28px;
+    }
+
+    .page-header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .page-header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .page-header p {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .search-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .search-wrap svg {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    input[type="search"] {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 9px 12px 9px 38px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="search"]:focus { border-color: var(--accent); }
+    input[type="search"]::placeholder { color: var(--muted); }
+
+    .stat-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 14px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .stat-chip span { color: var(--accent); font-weight: 600; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    thead th {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      position: sticky;
+      top: 49px;
+      z-index: 10;
+    }
+
+    thead th:first-child { border-radius: 6px 0 0 0; width: 55%; }
+    thead th:last-child { border-radius: 0 6px 0 0; width: 45%; }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+
+    tbody tr:hover { background: rgba(0,0,0,0.03); }
+
+    tbody td {
+      padding: 10px 14px;
+      vertical-align: middle;
+    }
+
+    tbody td:first-child { color: var(--text); }
+
+    tbody td:last-child {
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--muted);
+      display: none;
+    }
+
+    .no-results svg { margin: 0 auto 12px; display: block; opacity: 0.4; }
+
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 24px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 600px) {
+      .controls { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a class="logo" href="index.html">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <circle cx="12" cy="12" r="3"/>
+        <line x1="12" y1="2" x2="12" y2="5"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="5" y2="12"/>
+        <line x1="19" y1="12" x2="22" y2="12"/>
+      </svg>
+      VPinScore
+    </a>
+    <nav>
+      <a href="index.html">Docs</a>
+      <a href="roms.html" class="active">Supported ROMs</a>
+    </nav>
+  </div>
+</header>
+
+<div class="page-header">
+  <div class="page-header-inner">
+    <h1>Supported ROMs</h1>
+    <p>All pinball ROMs with NVRAM maps — scores are read directly from PinMAME memory for these titles.</p>
+  </div>
+</div>
+
+<main>
+  <div class="controls">
+    <div class="search-wrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="search" id="search" placeholder="Search by game name or ROM ID…" autocomplete="off" />
+    </div>
+    <div class="stat-chip">Showing <span id="count">897</span> of <span id="total">897</span> ROMs</div>
+  </div>
+
+  <table id="rom-table">
+    <thead>
+      <tr>
+        <th>Game Name</th>
+        <th>ROM ID</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <div class="no-results" id="no-results">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <p>No ROMs match your search.</p>
+  </div>
+</main>
+
+<footer>
+  VPinScore &mdash; open source score tracker for Visual Pinball X
+</footer>
+
+<script>
+const ROMS = [{"id": "aar_101", "name": "Aaron Spelling (1.01)"}, {"id": "acd_170", "name": "AC/DC (V1.70.0)"}, {"id": "acd_170h", "name": "AC/DC Limited Edition (V1.70.0)"}, {"id": "tafg_lx3", "name": "Addams Family Special Collectors Edition Gold, The (LX-3)"}, {"id": "tafg_dx3", "name": "Addams Family Special Collectors Edition, The (DX-3 LED Ghost Fix)"}, {"id": "taf_d5", "name": "Addams Family, The (D-5 LED Ghost Fix)"}, {"id": "taf_d6", "name": "Addams Family, The (D-6 LED Ghost Fix)"}, {"id": "taf_h4", "name": "Addams Family, The (H-4)"}, {"id": "taf_i4", "name": "Addams Family, The (I-4 LED Ghost Fix)"}, {"id": "taf_d7", "name": "Addams Family, The (L-5 Prototype D-7 LED Ghost Fix)"}, {"id": "taf_l7", "name": "Addams Family, The (L-5 Prototype L-7)"}, {"id": "taf_l5", "name": "Addams Family, The (L-5)"}, {"id": "taf_l5c", "name": "Addams Family, The (L-5C Competition + LED Ghost MOD)"}, {"id": "taf_l6", "name": "Addams Family, The (L-6)"}, {"id": "rab_130", "name": "Adventures of Rocky and Bullwinkle and Friends, The (1.30)"}, {"id": "rab_320", "name": "Adventures of Rocky and Bullwinkle and Friends, The (3.20)"}, {"id": "abv105", "name": "Airborne (1.5)"}, {"id": "abv106", "name": "Airborne (1.6)"}, {"id": "algar_l1ff", "name": "Algar (L-1 Free Play Fix)"}, {"id": "algar_l1", "name": "Algar (L-1)"}, {"id": "ali", "name": "Ali"}, {"id": "alpok_l2ff", "name": "Alien Poker (L-2 Free Play Fix)"}, {"id": "alpok_l2", "name": "Alien Poker (L-2)"}, {"id": "alpok_l6ff", "name": "Alien Poker (L-6 Free Play Fix)"}, {"id": "alpok_l6", "name": "Alien Poker (L-6)"}, {"id": "alpok_f6", "name": "Alien Poker (L-6, French Speech)"}, {"id": "alpok_f6ff", "name": "Alien Poker (L-6, French Speech, Free Play Fix)"}, {"id": "amazn2fp", "name": "Amazon Hunt II (French Free Play)"}, {"id": "amazonh2", "name": "Amazon Hunt II (French)"}, {"id": "amazn3fp", "name": "Amazon Hunt III (French Free Play)"}, {"id": "amazonh3", "name": "Amazon Hunt III (French)"}, {"id": "amaz3afp", "name": "Amazon Hunt III (rev. 1 French Free Play)"}, {"id": "apollo1", "name": "Apollo 13 (1.00)"}, {"id": "apollo2", "name": "Apollo 13 (2.03)"}, {"id": "apollo14", "name": "Apollo 13 (5.01, Display 4.01)"}, {"id": "apollo13", "name": "Apollo 13 (5.01, Display 5.00)"}, {"id": "arena", "name": "Arena"}, {"id": "arena_fp", "name": "Arena (Free Play)"}, {"id": "arenaffp", "name": "Arena (French Free Play)"}, {"id": "arenagfp", "name": "Arena (German Free Play)"}, {"id": "arenaafp", "name": "Arena (rev. 1 Free Play)"}, {"id": "arenaa", "name": "Arena (rev. 1)"}, {"id": "afm_113", "name": "Attack From Mars (1.13 / S1.1)"}, {"id": "afm_113b", "name": "Attack From Mars (1.13b / S1.1)"}, {"id": "avs_170", "name": "Avengers, The (V1.7)"}, {"id": "avs_170c", "name": "avs_170c"}, {"id": "bttf_a21", "name": "Back to the Future (2.1)"}, {"id": "bttf_g27", "name": "Back to the Future (2.7 German)"}, {"id": "bttf_a27", "name": "Back to the Future (2.7)"}, {"id": "bttf_a28", "name": "Back to the Future (2.8)"}, {"id": "bcats_l5", "name": "Bad Cats (L-5)"}, {"id": "badgirls", "name": "Bad Girls"}, {"id": "badgrlfp", "name": "Bad Girls (Free Play)"}, {"id": "badgrffp", "name": "Bad Girls (French Free Play)"}, {"id": "badgrgfp", "name": "Bad Girls (German Free Play)"}, {"id": "bnzai_l3", "name": "Banzai Run (L-3)"}, {"id": "barbwire", "name": "Barb Wire"}, {"id": "barra_l1", "name": "Barracora (L-1)"}, {"id": "btmn_103", "name": "Batman (1.03)"}, {"id": "btmn_106", "name": "Batman (1.06)"}, {"id": "bmf_at", "name": "Batman Forever (4.0 Austrian)"}, {"id": "bmf_be", "name": "Batman Forever (4.0 Belgian)"}, {"id": "bmf_cn", "name": "Batman Forever (4.0 Canadian)"}, {"id": "bmf_nl", "name": "Batman Forever (4.0 Dutch)"}, {"id": "bmf_uk", "name": "Batman Forever (4.0 English)"}, {"id": "bmf_fr", "name": "Batman Forever (4.0 French)"}, {"id": "bmf_de", "name": "Batman Forever (4.0 German)"}, {"id": "bmf_it2", "name": "Batman Forever (4.0 Italian, Display 4.0)"}, {"id": "bmf_it3", "name": "Batman Forever (4.0 Italian, Display 4.0, Early sound)"}, {"id": "bmf_it", "name": "Batman Forever (4.0 Italian, Display 4.01)"}, {"id": "bmf_jp", "name": "Batman Forever (4.0 Japanese)"}, {"id": "bmf_no", "name": "Batman Forever (4.0 Norwegian)"}, {"id": "bmf_sp", "name": "Batman Forever (4.0 Spanish)"}, {"id": "bmf_sv", "name": "Batman Forever (4.0 Swedish)"}, {"id": "bmf_ch", "name": "Batman Forever (4.0 Swiss)"}, {"id": "bmf_time", "name": "Batman Forever (4.0 Timed Play)"}, {"id": "batmanf", "name": "Batman Forever (4.0)"}, {"id": "batmanf5", "name": "Batman Forever (5.0 unofficial MOD)"}, {"id": "batmanf501", "name": "Batman Forever (5.01 unofficial MOD)"}, {"id": "bdk_294", "name": "Batman: The Dark Knight (V2.94)"}, {"id": "bay_d400", "name": "Baywatch (4.00 Dutch)"}, {"id": "bay_e400", "name": "Baywatch (4.00 English)"}, {"id": "baywatch", "name": "Baywatch (4.00)"}, {"id": "bay_401", "name": "Baywatch (4.01 unofficial MOD)"}, {"id": "bbb109", "name": "Big Bang Bar (Beta 1.9 US)"}, {"id": "biggame", "name": "Big Game"}, {"id": "bguns_l8", "name": "Big Guns (L-8)"}, {"id": "bguns_la", "name": "Big Guns (L-A)"}, {"id": "bighouse", "name": "Big House"}, {"id": "bighosfp", "name": "Big House (Free Play)"}, {"id": "bighsffp", "name": "Big House (French Free Play)"}, {"id": "bighsgfp", "name": "Big House (German Free Play)"}, {"id": "blackjck", "name": "Black Jack"}, {"id": "blackjcb", "name": "Black Jack (Free Play)"}, {"id": "blackjcd", "name": "Black Jack (Free Play+)"}, {"id": "bk_l4", "name": "Black Knight (L-4)"}, {"id": "bk2k_l4", "name": "Black Knight 2000 (L-4)"}, {"id": "blakpyra", "name": "Black Pyramid"}, {"id": "blakpyrb", "name": "Black Pyramid (Free Play)"}, {"id": "br_d4", "name": "Black Rose (D-4 LED Ghost Fix)"}, {"id": "br_l4", "name": "Black Rose (L-4)"}, {"id": "blkou_l1ff", "name": "Blackout (L-1 Free Play Fix)"}, {"id": "blkou_l1", "name": "Blackout (L-1)"}, {"id": "blkou_f1", "name": "Blackout (L-1, French Speech)"}, {"id": "blkou_f1ff", "name": "Blackout (L-1, French Speech, Free Play Fix)"}, {"id": "blkou_t1", "name": "Blackout (T-1 Ted Estes)"}, {"id": "blkou_t1ff", "name": "Blackout (T-1 Ted Estes, Free Play Fix)"}, {"id": "bmx", "name": "BMX"}, {"id": "bmxa", "name": "BMX (Free Play)"}, {"id": "bonebstr", "name": "Bone Busters Inc."}, {"id": "bonebsfp", "name": "Bone Busters Inc. (Free Play)"}, {"id": "bonebffp", "name": "Bone Busters Inc. (French Free Play)"}, {"id": "bonebgfp", "name": "Bone Busters Inc. (German Free Play)"}, {"id": "bountyh", "name": "Bounty Hunter"}, {"id": "bounthfp", "name": "Bounty Hunter (Free Play)"}, {"id": "bountgfp", "name": "Bounty Hunter (German Free Play)"}, {"id": "drac_d1", "name": "Bram Stoker's Dracula (D-1 LED Ghost Fix)"}, {"id": "drac_l1", "name": "Bram Stoker's Dracula (L-1)"}, {"id": "bsv103", "name": "Breakshot (1.3)"}, {"id": "bbnny_l2", "name": "Bugs Bunny's Birthday Ball (L-2)"}, {"id": "cc_13", "name": "Cactus Canyon (1.3)"}, {"id": "cactjack", "name": "Cactus Jack's"}, {"id": "carhop", "name": "Car Hop"}, {"id": "ccruise", "name": "Caribbean Cruise"}, {"id": "catacomb", "name": "Catacomb"}, {"id": "centaur", "name": "Centaur"}, {"id": "centaurb", "name": "Centaur (Free Play rev. 27)"}, {"id": "centaura", "name": "Centaur (Free Play)"}, {"id": "cp_16", "name": "Champion Pub, The (1.6)"}, {"id": "ckpt_a17", "name": "Checkpoint (1.7)"}, {"id": "che_cho", "name": "Cheech & Chong: Road-Trip'pin (Harley-Davidson unofficial MOD)"}, {"id": "cheetah2", "name": "Cheetah (Black cabinet Bonus shot 1/ball)"}, {"id": "cheetah", "name": "Cheetah (Black cabinet)"}, {"id": "cheetahb2", "name": "Cheetah (Blue cabinet Bonus shot 1/ball)"}, {"id": "cheetahb", "name": "Cheetah (Blue cabinet)"}, {"id": "triplay", "name": "Chicago Cubs Triple Play"}, {"id": "triplyfp", "name": "Chicago Cubs Triple Play (Free Play)"}, {"id": "triplgfp", "name": "Chicago Cubs Triple Play (German Free Play)"}, {"id": "triplyf1", "name": "Chicago Cubs Triple Play (rev. 1 Free Play)"}, {"id": "cv_14", "name": "Cirqus Voltaire (1.4)"}, {"id": "cv_20hc", "name": "Cirqus Voltaire (2.0H Coin Play)"}, {"id": "cv_20h", "name": "Cirqus Voltaire (2.0H)"}, {"id": "clas1812", "name": "Class of 1812"}, {"id": "comet_l4", "name": "Comet (L-4)"}, {"id": "comet_l5", "name": "Comet (L-5)"}, {"id": "congo_20", "name": "Congo (2.0, DCS95 S1.1)"}, {"id": "congo_20s10k", "name": "Congo (2.0, WPC-S S1.0-kit)"}, {"id": "congo_21", "name": "Congo (2.1, DCS95 S1.1)"}, {"id": "cntct_l1", "name": "Contact (L-1)"}, {"id": "corv_21", "name": "Corvette (2.1)"}, {"id": "csmic_l1", "name": "Cosmic Gunfight (L-1)"}, {"id": "princess", "name": "Cosmic Princess"}, {"id": "princefp", "name": "Cosmic Princess (Free Play)"}, {"id": "cftbl_d4", "name": "Creature from the Black Lagoon (D-4 LED Ghost Fix)"}, {"id": "cftbl_l4", "name": "Creature from the Black Lagoon (L-4)"}, {"id": "cueball", "name": "Cue Ball Wizard"}, {"id": "cueball1", "name": "Cue Ball Wizard (older display rev.)"}, {"id": "cueball2", "name": "Cue Ball Wizard (rev. 2)"}, {"id": "cueball3", "name": "Cue Ball Wizard (rev. 3)"}, {"id": "cybrnaut", "name": "Cybernaut"}, {"id": "cybrnaua", "name": "Cybernaut (Free Play)"}, {"id": "cycln_l5", "name": "Cyclone (L-5)"}, {"id": "deadweap", "name": "Deadly Weapon"}, {"id": "dfndr_l4", "name": "Defender (L-4)"}, {"id": "dm_dx4", "name": "Demolition Man (DX-4 LED Ghost Fix)"}, {"id": "dm_dt101", "name": "Demolition Man (FreeWPC/Demolition Time 1.01)"}, {"id": "dm_h6", "name": "Demolition Man (H-6)"}, {"id": "dm_h6b", "name": "Demolition Man (H-6B Coin Play)"}, {"id": "dm_h6c", "name": "Demolition Man (H-6C Competition MOD)"}, {"id": "dm_lx4", "name": "Demolition Man (LX-4)"}, {"id": "dm_lx4c", "name": "Demolition Man (LX-4C Competition + LED Ghost MOD)"}, {"id": "dvlrider", "name": "Devil Riders"}, {"id": "diamond", "name": "Diamond Lady"}, {"id": "diamonfp", "name": "Diamond Lady (Free Play)"}, {"id": "diamnffp", "name": "Diamond Lady (French Free Play)"}, {"id": "diamngfp", "name": "Diamond Lady (German Free Play)"}, {"id": "diner_l4", "name": "Diner (LA-4)"}, {"id": "dh_dx2", "name": "Dirty Harry (DX-2 LED Ghost Fix)"}, {"id": "dh_lx2", "name": "Dirty Harry (LX-2)"}, {"id": "disco_l1", "name": "Disco Fever (L-1)"}, {"id": "dw_d2", "name": "Doctor Who (D-2 LED Ghost Fix)"}, {"id": "dw_l2", "name": "Doctor Who (L-2)"}, {"id": "dollyptn", "name": "Dolly Parton"}, {"id": "dollyptb", "name": "Dolly Parton (7-digit conversion)"}, {"id": "dd_l2", "name": "Dr. Dude (LA-2)"}, {"id": "dracula", "name": "Dracula"}, {"id": "draculfp", "name": "Dracula (Free Play)"}, {"id": "dragfist", "name": "Dragonfist"}, {"id": "esha_la1", "name": "Earthshaker (LA-1)"}, {"id": "esha_ma3", "name": "Earthshaker (LA-3 Metallica MOD)"}, {"id": "esha_la3", "name": "Earthshaker (LA-3)"}, {"id": "esha_l4c", "name": "Earthshaker (LA-4C Competition MOD)"}, {"id": "esha_pr4", "name": "Earthshaker (PR-4 Family version)"}, {"id": "eightbll", "name": "Eight Ball"}, {"id": "eightblb", "name": "Eight Ball (Free Play)"}, {"id": "eightblc", "name": "Eight Ball (Free Play+)"}, {"id": "eballdla", "name": "Eight Ball Deluxe (Free Play)"}, {"id": "eballdld", "name": "Eight Ball Deluxe (P2/4 Bonus Bugfix)"}, {"id": "eballd14", "name": "Eight Ball Deluxe (rev. 14)"}, {"id": "eballdlx", "name": "Eight Ball Deluxe (rev. 15)"}, {"id": "elektra", "name": "Elektra"}, {"id": "elektraa", "name": "Elektra (Free Play)"}, {"id": "eatpm_l2", "name": "Elvira and the Party Monsters (LA-2)"}, {"id": "eatpm_l4", "name": "Elvira and the Party Monsters (LA-4)"}, {"id": "embryon", "name": "Embryon"}, {"id": "embryond", "name": "Embryon (7-digit conversion rev. 9)"}, {"id": "embryona", "name": "Embryon (Free Play)"}, {"id": "evelknie", "name": "Evel Knievel"}, {"id": "evelknib", "name": "Evel Knievel (Free Play)"}, {"id": "evelknic", "name": "Evel Knievel (Free Play+)"}, {"id": "excaliba", "name": "Excalibur"}, {"id": "excalbfp", "name": "Excalibur (Free Play)"}, {"id": "excalffp", "name": "Excalibur (French Free Play)"}, {"id": "excalibr", "name": "Excalibur (French)"}, {"id": "excalgfp", "name": "Excalibur (German Free Play)"}, {"id": "f14_l1", "name": "F-14 Tomcat (L-1)"}, {"id": "f14_p5", "name": "F-14 Tomcat (P-5 Prototype)"}, {"id": "farfalla", "name": "Farfalla"}, {"id": "fathom", "name": "Fathom"}, {"id": "fathoma", "name": "Fathom (Free Play)"}, {"id": "fire_l3", "name": "Fire! (L-3)"}, {"id": "fbclass", "name": "Fireball Classic"}, {"id": "fbclassa", "name": "Fireball Classic (Free Play)"}, {"id": "fball_ii", "name": "Fireball II"}, {"id": "fball_ia", "name": "Fireball II (Free Play)"}, {"id": "frpwr_l2ff", "name": "Firepower (L-2 Free Play Fix)"}, {"id": "frpwr_l2", "name": "Firepower (L-2)"}, {"id": "frpwr_l6ff", "name": "Firepower (L-6 Free Play Fix)"}, {"id": "frpwr_l6", "name": "Firepower (L-6)"}, {"id": "frpwr_t6ff", "name": "Firepower (T-6 Ted Estes Free Play Fix)"}, {"id": "frpwr_t6", "name": "Firepower (T-6 Ted Estes)"}, {"id": "fpwr2_l2", "name": "Firepower II (L-2)"}, {"id": "ft_d5", "name": "Fish Tales (D-5 LED Ghost Fix)"}, {"id": "ft_d6", "name": "Fish Tales (D-6 Text size patch LED Ghost Fix)"}, {"id": "ft_l5p", "name": "Fish Tales (L-5 Text size patch)"}, {"id": "ft_l5", "name": "Fish Tales (L-5)"}, {"id": "flash_l2", "name": "Flash (Sys.4 L-2)"}, {"id": "flash_l1ff", "name": "Flash (Sys.6 L-1 Free Play Fix)"}, {"id": "flash_l1", "name": "Flash (Sys.6 L-1)"}, {"id": "flash_t1", "name": "Flash (Sys.6 T-1 Ted Estes)"}, {"id": "flash_t1ff", "name": "Flash (Sys.6 T-1 Ted Estes, Free Play Fix)"}, {"id": "flashgdn", "name": "Flash Gordon"}, {"id": "flashgda", "name": "Flash Gordon (Free Play)"}, {"id": "flashgfa", "name": "Flash Gordon (French Free Play)"}, {"id": "flashgvffp", "name": "Flash Gordon (French Vocalizer Sound Free Play)"}, {"id": "flashgvf", "name": "Flash Gordon (French Vocalizer Sound)"}, {"id": "flashgdf", "name": "Flash Gordon (French)"}, {"id": "flashgva", "name": "Flash Gordon (Vocalizer Sound Free Play)"}, {"id": "flashgdv", "name": "Flash Gordon (Vocalizer Sound)"}, {"id": "flight2k", "name": "Flight 2000"}, {"id": "flight2m", "name": "Flight 2000 (modified rules rev. 3335)"}, {"id": "fs_dx5", "name": "Flintstones, The (DX-5 LED Ghost Fix)"}, {"id": "fs_sp2d", "name": "Flintstones, The (DX-5, SP-2 LED Ghost Fix)"}, {"id": "fs_lx5", "name": "Flintstones, The (LX-5)"}, {"id": "fs_sp2", "name": "Flintstones, The (LX-5, SP-2)"}, {"id": "frankst", "name": "Frankenstein, Mary Shelley's"}, {"id": "frankstg", "name": "Frankenstein, Mary Shelley's (German)"}, {"id": "franksti", "name": "Frankenstein, Mary Shelley's (Italian)"}, {"id": "freddy", "name": "Freddy: A Nightmare on Elm Street (rev. 3)"}, {"id": "freddy4", "name": "Freddy: A Nightmare on Elm Street (rev. 4)"}, {"id": "freefall", "name": "Free Fall"}, {"id": "freedom", "name": "Freedom"}, {"id": "freedoma", "name": "Freedom (Free Play+ rev. 07)"}, {"id": "freedomb", "name": "Freedom (Free Play+ rev. 20)"}, {"id": "frontier", "name": "Frontier"}, {"id": "frontiea", "name": "Frontier (Free Play)"}, {"id": "frontieg", "name": "Frontier (Gate Fix)"}, {"id": "fh_905h", "name": "Funhouse (9.05H)"}, {"id": "fh_906h", "name": "Funhouse (9.06H Coin Play)"}, {"id": "fh_d3", "name": "Funhouse (D-3 LED Ghost Fix)"}, {"id": "fh_d9b", "name": "Funhouse (D-9, SL-3 German LED Ghost Fix)"}, {"id": "fh_d9", "name": "Funhouse (D-9, SL-3 LED Ghost Fix)"}, {"id": "fh_l3", "name": "Funhouse (L-3)"}, {"id": "fh_l9b", "name": "Funhouse (L-9, SL-3 Improved German translation patch)"}, {"id": "fh_l9", "name": "Funhouse (L-9, SL-3)"}, {"id": "futurspa", "name": "Future Spa"}, {"id": "futurspb", "name": "Future Spa (7-digit conversion)"}, {"id": "galaxy", "name": "Galaxy"}, {"id": "gs_la3", "name": "Game Show (LA-3)"}, {"id": "gs_lu4", "name": "Game Show (LU-4 Europe)"}, {"id": "genesis", "name": "Genesis"}, {"id": "genesifp", "name": "Genesis (Free Play)"}, {"id": "genesffp", "name": "Genesis (French Free Play)"}, {"id": "genesgfp", "name": "Genesis (German Free Play)"}, {"id": "gw_d5", "name": "Getaway: High Speed II, The (D-5 LED Ghost Fix)"}, {"id": "gw_l5", "name": "Getaway: High Speed II, The (L-5)"}, {"id": "gw_l5c", "name": "Getaway: High Speed II, The (L-5C Competition MOD)"}, {"id": "gi_d9", "name": "Gilligan's Island (D-9 LED Ghost Fix)"}, {"id": "gi_l9", "name": "Gilligan's Island (L-9)"}, {"id": "gladiatr", "name": "Gladiators"}, {"id": "godzilla", "name": "Godzilla (2.05)"}, {"id": "goldball", "name": "Gold Ball"}, {"id": "goldbaln", "name": "Gold Ball (alternate set)"}, {"id": "gmine_l2", "name": "Gold Mine (Shuffle) (L-2)"}, {"id": "goldwing", "name": "Gold Wings"}, {"id": "goldwgfp", "name": "Gold Wings (Free Play)"}, {"id": "gldwgffp", "name": "Gold Wings (French Free Play)"}, {"id": "gldwggfp", "name": "Gold Wings (German Free Play)"}, {"id": "gldneye", "name": "Goldeneye"}, {"id": "grgar_c1", "name": "Gorgar (C-1 Lane Change MOD)"}, {"id": "grgar_l1ff", "name": "Gorgar (L-1 Free Play Fix)"}, {"id": "grgar_l1", "name": "Gorgar (L-1)"}, {"id": "grgar_t1", "name": "Gorgar (T-1 Ted Estes)"}, {"id": "grgar_t1ff", "name": "Gorgar (T-1 Ted Estes, Free Play Fix)"}, {"id": "grand_l4", "name": "Grand Lizard (L-4)"}, {"id": "gransla4", "name": "Grand Slam (4 Players)"}, {"id": "gnr_300d", "name": "Guns N' Roses (3.00 Dutch)"}, {"id": "gnr_300f", "name": "Guns N' Roses (3.00 French)"}, {"id": "gnr_300", "name": "Guns N' Roses (3.00)"}, {"id": "hglbtrtr", "name": "Harlem Globetrotters"}, {"id": "hglbtrtb", "name": "Harlem Globetrotters (7-digit conversion)"}, {"id": "hd_d1", "name": "Harley-Davidson (D-1 LED Ghost Fix)"}, {"id": "hd_d2", "name": "Harley-Davidson (D-2 LED Ghost Fix)"}, {"id": "hd_d3", "name": "Harley-Davidson (D-3 LED Ghost Fix)"}, {"id": "hd_l1", "name": "Harley-Davidson (L-1)"}, {"id": "hd_l2", "name": "Harley-Davidson (L-2)"}, {"id": "hd_l3", "name": "Harley-Davidson (L-3)"}, {"id": "harl_u13", "name": "Harley-Davidson (Sega, 1.03 English)"}, {"id": "harl_f13", "name": "Harley-Davidson (Sega, 1.03 French)"}, {"id": "harl_g13", "name": "Harley-Davidson (Sega, 1.03 German)"}, {"id": "harl_i13", "name": "Harley-Davidson (Sega, 1.03 Italian)"}, {"id": "harl_l13", "name": "Harley-Davidson (Sega, 1.03 Spanish)"}, {"id": "harl_a10", "name": "Harley-Davidson (Sega, 1.03, Display 1.00)"}, {"id": "harl_a13", "name": "Harley-Davidson (Sega, 1.03, Display 1.04)"}, {"id": "harl_f18", "name": "Harley-Davidson (Stern, 1.08 French)"}, {"id": "harl_g18", "name": "Harley-Davidson (Stern, 1.08 German)"}, {"id": "harl_i18", "name": "Harley-Davidson (Stern, 1.08 Italian)"}, {"id": "harl_l18", "name": "Harley-Davidson (Stern, 1.08 Spanish)"}, {"id": "harl_a18", "name": "Harley-Davidson (Stern, 1.08)"}, {"id": "harl_f30", "name": "Harley-Davidson (Stern, 3.00 French)"}, {"id": "harl_g30", "name": "Harley-Davidson (Stern, 3.00 German)"}, {"id": "harl_i30", "name": "Harley-Davidson (Stern, 3.00 Italian)"}, {"id": "harl_l30", "name": "Harley-Davidson (Stern, 3.00 Spanish)"}, {"id": "harl_a30", "name": "Harley-Davidson (Stern, 3.00)"}, {"id": "harl_f40", "name": "Harley-Davidson (Stern, 4.00 French)"}, {"id": "harl_g40", "name": "Harley-Davidson (Stern, 4.00 German)"}, {"id": "harl_i40", "name": "Harley-Davidson (Stern, 4.00 Italian)"}, {"id": "harl_l40", "name": "Harley-Davidson (Stern, 4.00 Spanish)"}, {"id": "harl_a40", "name": "Harley-Davidson (Stern, 4.00)"}, {"id": "hs_l3", "name": "High Speed (L-3)"}, {"id": "hs_l4", "name": "High Speed (L-4)"}, {"id": "hlywoodh", "name": "Hollywood Heat"}, {"id": "hlywdhfp", "name": "Hollywood Heat (Free Play)"}, {"id": "hlywhffp", "name": "Hollywood Heat (French Free Play)"}, {"id": "hlywhgfp", "name": "Hollywood Heat (German Free Play)"}, {"id": "hook_401", "name": "Hook (4.01)"}, {"id": "hook_400", "name": "Hook (4.01, Display 4.00)"}, {"id": "hook_f401", "name": "Hook (4.01, French Display 4.01)"}, {"id": "hook_404", "name": "Hook (4.04)"}, {"id": "hook_e406", "name": "Hook (4.06 English)"}, {"id": "hook_408", "name": "Hook (4.08)"}, {"id": "hook_500", "name": "Hook (5.00 unofficial MOD)"}, {"id": "hook_501", "name": "Hook (5.01 unofficial MOD)"}, {"id": "hoops", "name": "Hoops"}, {"id": "hothand", "name": "Hot Hand"}, {"id": "hothanfp", "name": "Hot Hand (Free Play)"}, {"id": "hotshots", "name": "Hot Shots"}, {"id": "hotshtfp", "name": "Hot Shots (Free Play)"}, {"id": "hotshffp", "name": "Hot Shots (French Free Play)"}, {"id": "hotshgfp", "name": "Hot Shots (German Free Play)"}, {"id": "httip_l1", "name": "Hot Tip (L-1)"}, {"id": "hotdoggn", "name": "Hotdoggin'"}, {"id": "hotdoggb", "name": "Hotdoggin' (7-digit conversion)"}, {"id": "hotdogga", "name": "Hotdoggin' (modified rules rev. 2 Free Play)"}, {"id": "hod", "name": "House of Diamonds"}, {"id": "hurr_d2", "name": "Hurricane (D-2 LED Ghost Fix)"}, {"id": "hurr_l2", "name": "Hurricane (L-2)"}, {"id": "hypbl_l6", "name": "HyperBall (L-6 MOD High score save)"}, {"id": "id4f", "name": "ID4: Independence Day (2.02 French)"}, {"id": "id4", "name": "ID4: Independence Day (2.02)"}, {"id": "ij_d7", "name": "Indiana Jones: The Pinball Adventure (D-7 LED Ghost Fix)"}, {"id": "ij_l7", "name": "Indiana Jones: The Pinball Adventure (L-7)"}, {"id": "i500_11r", "name": "Indianapolis 500 (1.1R)"}, {"id": "ironmaid", "name": "Iron Maiden"}, {"id": "jb_101r", "name": "Jack*Bot (1.01R LED Ghost Fix)"}, {"id": "jb_10r", "name": "Jack*Bot (1.0R)"}, {"id": "jm_12r", "name": "Johnny Mnemonic (1.2R)"}, {"id": "jokrz_l6", "name": "Jokerz (L-6)"}, {"id": "jst_l2", "name": "Joust (L-2)"}, {"id": "jd_d1", "name": "Judge Dredd (D-1 LED Ghost Fix)"}, {"id": "jd_d4", "name": "Judge Dredd (D-4 LED Ghost Fix)"}, {"id": "jd_d5", "name": "Judge Dredd (D-5 LED Ghost Fix)"}, {"id": "jd_d6", "name": "Judge Dredd (D-6 LED Ghost Fix)"}, {"id": "jd_d7", "name": "Judge Dredd (D-7 LED Ghost Fix)"}, {"id": "jd_l1", "name": "Judge Dredd (L-1)"}, {"id": "jd_l4", "name": "Judge Dredd (L-4)"}, {"id": "jd_l5", "name": "Judge Dredd (L-5)"}, {"id": "jd_l6", "name": "Judge Dredd (L-6)"}, {"id": "jd_l7", "name": "Judge Dredd (L-7)"}, {"id": "jngld_l2", "name": "Jungle Lord (L-2)"}, {"id": "jy_12", "name": "Junk Yard (1.2)"}, {"id": "jy_12c", "name": "Junk Yard (1.2C Competition MOD)"}, {"id": "jupk_305", "name": "Jurassic Park (3.05)"}, {"id": "jupk_307", "name": "Jurassic Park (3.07)"}, {"id": "jupk_g51", "name": "Jurassic Park (5.01 German)"}, {"id": "jupk_501", "name": "Jurassic Park (5.01)"}, {"id": "jupk_513", "name": "Jurassic Park (5.13)"}, {"id": "jupk_600", "name": "Jurassic Park (6.00 unofficial MOD)"}, {"id": "kpb105", "name": "Kingpin (Beta 1.05)"}, {"id": "kosteel", "name": "Kings of Steel"}, {"id": "kosteela", "name": "Kings of Steel (Free Play)"}, {"id": "kiss", "name": "Kiss"}, {"id": "kissd", "name": "Kiss (/10 Scoring Free Play rev. 4)"}, {"id": "kissf", "name": "Kiss (/10 Scoring Free Play rev. 5)"}, {"id": "kissb", "name": "Kiss (7-digit conversion rev. 20)"}, {"id": "kisse", "name": "Kiss (7-digit conversion rev. 30)"}, {"id": "kissc", "name": "Kiss (Free Play rev. 3)"}, {"id": "kpv106", "name": "kpv106"}, {"id": "lzbal_l2ff", "name": "Laser Ball (L-2 Free Play Fix)"}, {"id": "lzbal_l2", "name": "Laser Ball (L-2)"}, {"id": "lzbal_l2sp", "name": "Laser Ball (L-2, PROM Sound)"}, {"id": "lzbal_l2spff", "name": "Laser Ball (L-2, PROM Sound, Free Play Fix)"}, {"id": "lzbal_t2", "name": "Laser Ball (T-2 Ted Estes)"}, {"id": "lzbal_t2ff", "name": "Laser Ball (T-2 Ted Estes, Free Play Fix)"}, {"id": "lsrcu_l2", "name": "Laser Cue (L-2)"}, {"id": "lwar_a81", "name": "Laser War (8.1)"}, {"id": "lwar_a83", "name": "Laser War (8.3)"}, {"id": "lwar_e90", "name": "Laser War (9.0 Europe)"}, {"id": "lah_110", "name": "Last Action Hero (1.10)"}, {"id": "lah_112", "name": "Last Action Hero (1.12)"}, {"id": "lah_113", "name": "Last Action Hero (1.13 unofficial MOD)"}, {"id": "lectrono", "name": "Lectronamo"}, {"id": "lectrofp", "name": "Lectronamo (Free Play)"}, {"id": "lw3_200", "name": "Lethal Weapon 3 (2.00)"}, {"id": "lw3_203", "name": "Lethal Weapon 3 (2.03)"}, {"id": "lw3_205", "name": "Lethal Weapon 3 (2.05)"}, {"id": "lw3_208", "name": "Lethal Weapon 3 (2.08)"}, {"id": "lw3_301", "name": "Lethal Weapon 3 (3.01 unofficial MOD)"}, {"id": "lightnin", "name": "Lightning"}, {"id": "lca", "name": "Lights, Camera, Action"}, {"id": "lca2", "name": "Lights, Camera, Action (rev. 2)"}, {"id": "lotr_fr", "name": "Lord of the Rings, The (10.00 French)"}, {"id": "lotr_gr", "name": "Lord of the Rings, The (10.00 German)"}, {"id": "lotr_it", "name": "Lord of the Rings, The (10.00 Italian)"}, {"id": "lotr_sp", "name": "Lord of the Rings, The (10.00 Spanish)"}, {"id": "lotr", "name": "Lord of the Rings, The (10.00)"}, {"id": "lotr_le", "name": "Lord of the Rings, The (10.02 Limited Edition)"}, {"id": "lotr_fr8", "name": "Lord of the Rings, The (8.00 French)"}, {"id": "lotr_gr8", "name": "Lord of the Rings, The (8.00 German)"}, {"id": "lotr_it8", "name": "Lord of the Rings, The (8.00 Italian)"}, {"id": "lotr_sp8", "name": "Lord of the Rings, The (8.00 Spanish)"}, {"id": "lotr8", "name": "Lord of the Rings, The (8.00)"}, {"id": "lotr_fr9", "name": "Lord of the Rings, The (9.00 French)"}, {"id": "lotr_gr9", "name": "Lord of the Rings, The (9.00 German)"}, {"id": "lotr_it9", "name": "Lord of the Rings, The (9.00 Italian)"}, {"id": "lotr_sp9", "name": "Lord of the Rings, The (9.00 Spanish)"}, {"id": "lotr9", "name": "Lord of the Rings, The (9.00)"}, {"id": "lostspcf", "name": "Lost in Space (1.01 French)"}, {"id": "lostspcg", "name": "Lost in Space (1.01 German)"}, {"id": "lostspc1", "name": "Lost in Space (1.01, Display 1.01)"}, {"id": "lostspc", "name": "Lost in Space (1.01, Display 1.02)"}, {"id": "lostwrld", "name": "Lost World"}, {"id": "lostwldb", "name": "Lost World (Free Play)"}, {"id": "jplstw20", "name": "Lost World: Jurassic Park, The (2.00)"}, {"id": "jplstw22", "name": "Lost World: Jurassic Park, The (2.02)"}, {"id": "lucky_l1", "name": "Lucky Seven (L-1)"}, {"id": "bop_d7", "name": "Machine: Bride of Pinbot, The (D-7 LED Ghost Fix)"}, {"id": "bop_d8", "name": "Machine: Bride of Pinbot, The (D-8 LED Ghost Fix)"}, {"id": "bop_l7", "name": "Machine: Bride of Pinbot, The (L-7)"}, {"id": "bop_l8", "name": "Machine: Bride of Pinbot, The (L-8 billionaire multiplayer patch)"}, {"id": "magic", "name": "Magic"}, {"id": "magicfp", "name": "Magic (Free Play)"}, {"id": "mcastle", "name": "Magic Castle"}, {"id": "andretti", "name": "Mario Andretti"}, {"id": "matahari", "name": "Mata Hari"}, {"id": "mataharb", "name": "Mata Hari (Free Play)"}, {"id": "mataharc", "name": "Mata Hari (Free Play+)"}, {"id": "mav_100", "name": "Maverick, The Movie (1.00)"}, {"id": "mav_200", "name": "Maverick, The Movie (2.00)"}, {"id": "mav_400", "name": "Maverick, The Movie (4.00)"}, {"id": "mav_401", "name": "Maverick, The Movie (4.04, Display 4.01)"}, {"id": "mav_402", "name": "Maverick, The Movie (4.04, Display 4.02)"}, {"id": "mm_10", "name": "Medieval Madness (1.0)"}, {"id": "mm_109", "name": "Medieval Madness (1.09)"}, {"id": "mm_109b", "name": "Medieval Madness (1.09B)"}, {"id": "mm_109c", "name": "Medieval Madness (1.09C Profanity)"}, {"id": "medusa", "name": "Medusa"}, {"id": "medusaf", "name": "Medusa (6802 board)"}, {"id": "medusaa", "name": "Medusa (Free Play)"}, {"id": "memlane", "name": "Memory Lane"}, {"id": "memlanfp", "name": "Memory Lane (Free Play)"}, {"id": "mtl_180h", "name": "Metallica Limited Edition (V1.80.0)"}, {"id": "meteor", "name": "Meteor"}, {"id": "meteora2", "name": "Meteor (Bonus Count and Sound Fix)"}, {"id": "meteorbf", "name": "Meteor (Bonus Count Fix)"}, {"id": "meteora", "name": "Meteor (Bonus Count Offical Fix)"}, {"id": "milln_l3", "name": "Millionaire (L-3)"}, {"id": "mnfb_c27", "name": "Monday Night Football (2.7, 50cts)"}, {"id": "mnfb_c29", "name": "Monday Night Football (2.9, 50cts)"}, {"id": "monopole", "name": "Monopoly (3.03)"}, {"id": "monopolf", "name": "Monopoly (3.20 French)"}, {"id": "monopolg", "name": "Monopoly (3.20 German)"}, {"id": "monopoli", "name": "Monopoly (3.20 Italian)"}, {"id": "monopoll", "name": "Monopoly (3.20 Spanish)"}, {"id": "monopoly", "name": "Monopoly (3.20)"}, {"id": "mb_10", "name": "Monster Bash (1.0)"}, {"id": "mb_106", "name": "Monster Bash (1.06)"}, {"id": "mb_106b", "name": "Monster Bash (1.06b)"}, {"id": "mntecrlo", "name": "Monte Carlo"}, {"id": "mntecrfp", "name": "Monte Carlo (Free Play)"}, {"id": "mntcrffp", "name": "Monte Carlo (French Free Play)"}, {"id": "mntcrfmfp", "name": "Monte Carlo (French Millions option, Free Play)"}, {"id": "mntcrgfp", "name": "Monte Carlo (German Free Play)"}, {"id": "mntcrgmfp", "name": "Monte Carlo (German Millions option, Free Play)"}, {"id": "mntcrafp", "name": "Monte Carlo (rev. 1 Free Play)"}, {"id": "mntcr2fp", "name": "Monte Carlo (rev. 2 Free Play)"}, {"id": "mntcrmfp", "name": "Monte Carlo (rev. 2 Millions option, Free Play)"}, {"id": "mousn_l4", "name": "Mousin' Around! (LA-4)"}, {"id": "m_mpac", "name": "Mr. & Mrs. Pac-Man Pinball"}, {"id": "m_mpacb", "name": "Mr. & Mrs. Pac-Man Pinball (alternate version)"}, {"id": "m_mpaca", "name": "Mr. & Mrs. Pac-Man Pinball (Free Play)"}, {"id": "mystcast", "name": "Mystery Castle (R02)"}, {"id": "mystic", "name": "Mystic"}, {"id": "mysticb", "name": "Mystic (7-digit conversion)"}, {"id": "nbaf_31", "name": "NBA Fastbreak (3.1 / S3.0 English/German)"}, {"id": "newwave", "name": "New Wave"}, {"id": "nfl", "name": "NFL"}, {"id": "nmoves", "name": "Night Moves"}, {"id": "nmovesfp", "name": "Night Moves (Free Play)"}, {"id": "nightrdb", "name": "Night Rider (Free Play)"}, {"id": "nightrdc", "name": "Night Rider (Free Play+)"}, {"id": "nightr20", "name": "Night Rider (rev. 20)"}, {"id": "nightrdr", "name": "Night Rider (rev. 21)"}, {"id": "nineball", "name": "Nine Ball"}, {"id": "ngndshkr", "name": "Nitro Ground Shaker"}, {"id": "ngndshkb", "name": "Nitro Ground Shaker (7-digit conversion)"}, {"id": "nf_20", "name": "No Fear: Dangerous Sports (2.0 / S1.1)"}, {"id": "nf_22", "name": "No Fear: Dangerous Sports (2.2 / S1.1)"}, {"id": "nf_23", "name": "No Fear: Dangerous Sports (2.3 / S1.1)"}, {"id": "nf_23f", "name": "No Fear: Dangerous Sports (2.3F French / S1.1)"}, {"id": "nf_23x", "name": "No Fear: Dangerous Sports (2.3X Export / S1.1)"}, {"id": "ngg_13", "name": "No Good Gofers (1.3)"}, {"id": "nugent", "name": "Nugent"}, {"id": "nugentfp", "name": "Nugent (Free Play)"}, {"id": "opthund", "name": "Operation Thunder"}, {"id": "orbitor1", "name": "Orbitor 1"}, {"id": "paragon", "name": "Paragon"}, {"id": "paragond", "name": "Paragon (/10 Scoring Free Play)"}, {"id": "paragonb", "name": "Paragon (7-digit conversion rev. 20)"}, {"id": "paragonc", "name": "Paragon (Free Play rev. 3)"}, {"id": "pz_d3", "name": "Party Zone, The (D-3 LED Ghost Fix)"}, {"id": "pz_f4", "name": "Party Zone, The (F-4 Fliptronic)"}, {"id": "pz_f5", "name": "Party Zone, The (F-5 LED Ghost Fix)"}, {"id": "pz_l3", "name": "Party Zone, The (L-3)"}, {"id": "poto_a29", "name": "Phantom of the Opera, The (2.9)"}, {"id": "poto_a31", "name": "Phantom of the Opera, The (3.1)"}, {"id": "poto_a32", "name": "Phantom of the Opera, The (3.2)"}, {"id": "pharo_l2", "name": "Pharaoh (L-2)"}, {"id": "phnix_l1", "name": "Phoenix (L-1)"}, {"id": "pb_l5", "name": "Pin-Bot (L-5)"}, {"id": "pinball", "name": "Pinball"}, {"id": "pinbalfp", "name": "Pinball (Free Play)"}, {"id": "pinchamp", "name": "Pinball Champ"}, {"id": "playboy", "name": "Playboy"}, {"id": "playboyd", "name": "Playboy (/10 Scoring Free Play)"}, {"id": "playboyb", "name": "Playboy (7-digit conversion rev. 20)"}, {"id": "playboyc", "name": "Playboy (Free Play rev. 3)"}, {"id": "play_a24", "name": "Playboy 35th Anniversary (2.4)"}, {"id": "pkrno_l1", "name": "Pokerino (L-1)"}, {"id": "polic_l4", "name": "Police Force (LA-4)"}, {"id": "pool_l7", "name": "Pool Sharks (LA-7)"}, {"id": "pop_dx5", "name": "Popeye Saves The Earth (DX-5 LED Ghost Fix)"}, {"id": "pop_lx5", "name": "Popeye Saves The Earth (LX-5)"}, {"id": "pwerplay", "name": "Power Play"}, {"id": "pwerplab", "name": "Power Play (Free Play)"}, {"id": "pwerplac", "name": "Power Play (Free Play+)"}, {"id": "quicksil", "name": "Quicksilver"}, {"id": "radcl_l1", "name": "Radical! (L-1)"}, {"id": "rapidfir", "name": "Rapid Fire"}, {"id": "ratrc_l1", "name": "Rat Race (L-1)"}, {"id": "raven", "name": "Raven"}, {"id": "ravenfp", "name": "Raven (Free Play)"}, {"id": "ravengfp", "name": "Raven (German Free Play)"}, {"id": "ravenafp", "name": "Raven (rev. 1 Free Play)"}, {"id": "rs_l6", "name": "Red and Ted's Road Show (L-6)"}, {"id": "rs_l6c", "name": "Red and Ted's Road Show (L-6C Competition MOD)"}, {"id": "rescu911", "name": "Rescue 911 (rev. 1)"}, {"id": "rip300f", "name": "Ripley's Believe It or Not! (3.00 French)"}, {"id": "rip300g", "name": "Ripley's Believe It or Not! (3.00 German)"}, {"id": "rip300i", "name": "Ripley's Believe It or Not! (3.00 Italian)"}, {"id": "rip300l", "name": "Ripley's Believe It or Not! (3.00 Spanish)"}, {"id": "rip300", "name": "Ripley's Believe It or Not! (3.00)"}, {"id": "rip301f", "name": "Ripley's Believe It or Not! (3.01 French)"}, {"id": "rip301g", "name": "Ripley's Believe It or Not! (3.01 German)"}, {"id": "rip301i", "name": "Ripley's Believe It or Not! (3.01 Italian)"}, {"id": "rip301l", "name": "Ripley's Believe It or Not! (3.01 Spanish)"}, {"id": "rip301", "name": "Ripley's Believe It or Not! (3.01)"}, {"id": "rip302f", "name": "Ripley's Believe It or Not! (3.02 French)"}, {"id": "rip302g", "name": "Ripley's Believe It or Not! (3.02 German)"}, {"id": "rip302i", "name": "Ripley's Believe It or Not! (3.02 Italian)"}, {"id": "rip302l", "name": "Ripley's Believe It or Not! (3.02 Spanish)"}, {"id": "rip302", "name": "Ripley's Believe It or Not! (3.02)"}, {"id": "rip310f", "name": "Ripley's Believe It or Not! (3.10 French)"}, {"id": "rip310g", "name": "Ripley's Believe It or Not! (3.10 German)"}, {"id": "rip310i", "name": "Ripley's Believe It or Not! (3.10 Italian)"}, {"id": "rip310l", "name": "Ripley's Believe It or Not! (3.10 Spanish)"}, {"id": "rip310", "name": "Ripley's Believe It or Not! (3.10)"}, {"id": "ripleysf", "name": "Ripley's Believe It or Not! (3.20 French)"}, {"id": "ripleysg", "name": "Ripley's Believe It or Not! (3.20 German)"}, {"id": "ripleysi", "name": "Ripley's Believe It or Not! (3.20 Italian)"}, {"id": "ripleysl", "name": "Ripley's Believe It or Not! (3.20 Spanish)"}, {"id": "ripleys", "name": "Ripley's Believe It or Not! (3.20)"}, {"id": "rvrbt_l3", "name": "Riverboat Gambler (L-3)"}, {"id": "rdkng_l4", "name": "Road Kings (L-4)"}, {"id": "robowars", "name": "Robo-War"}, {"id": "robowrfp", "name": "Robo-War (Free Play)"}, {"id": "robowffp", "name": "Robo-War (French Free Play)"}, {"id": "robo_a29", "name": "Robocop (2.9)"}, {"id": "robo_a30", "name": "Robocop (3.0)"}, {"id": "robo_a34", "name": "Robocop (3.4)"}, {"id": "robot", "name": "Robot"}, {"id": "rock", "name": "Rock"}, {"id": "rockfp", "name": "Rock (Free Play)"}, {"id": "rockgfp", "name": "Rock (German Free Play)"}, {"id": "rock_enc", "name": "Rock Encore"}, {"id": "rock_efp", "name": "Rock Encore (Free Play)"}, {"id": "rockegfp", "name": "Rock Encore (German Free Play)"}, {"id": "rollr_l2", "name": "Rollergames (LA-2)"}, {"id": "rollston", "name": "Rolling Stones"}, {"id": "rollstob", "name": "Rolling Stones (7-digit conversion)"}, {"id": "sc_091", "name": "Safe Cracker (0.91 Prototype / S1.0)"}, {"id": "sc_18s11", "name": "Safe Cracker (1.8 / S1.1)"}, {"id": "sc_18s2", "name": "Safe Cracker (1.8 / S2.4 German)"}, {"id": "sc_18pfx", "name": "Safe Cracker (1.8 Pinball FX / S1.0)"}, {"id": "ss_15", "name": "Scared Stiff (1.5)"}, {"id": "scrpn_l1ff", "name": "Scorpion (L-1 Free Play Fix)"}, {"id": "scrpn_l1", "name": "Scorpion (L-1)"}, {"id": "scrpn_t1", "name": "Scorpion (T-1 Ted Estes)"}, {"id": "scrpn_t1ff", "name": "Scorpion (T-1 Ted Estes, Free Play Fix)"}, {"id": "seawitch", "name": "Seawitch"}, {"id": "ssvc_a26", "name": "Secret Service (2.6)"}, {"id": "ssvc_b26", "name": "Secret Service (2.6, alternate sound)"}, {"id": "ssvc_e40", "name": "Secret Service (4.0 Europe)"}, {"id": "ssvc_a42", "name": "Secret Service (4.2, alternate sound)"}, {"id": "sexygirl", "name": "Sexy Girl"}, {"id": "ts_dx5", "name": "Shadow, The (DX-5 LED Ghost Fix)"}, {"id": "ts_lx5", "name": "Shadow, The (LX-5)"}, {"id": "strapids", "name": "Shooting the Rapids"}, {"id": "silvslug", "name": "Silver Slugger"}, {"id": "slbmania", "name": "Silverball Mania"}, {"id": "slbmanib", "name": "Silverball Mania (7-digit conversion)"}, {"id": "slbmanid", "name": "Silverball Mania (Horseshoe No Spotting MOD rev. 13)"}, {"id": "slbmanic", "name": "Silverball Mania (Horseshoe Spot MOD rev. 13)"}, {"id": "simp300f", "name": "Simpsons Pinball Party, The (3.00 French)"}, {"id": "simp300i", "name": "Simpsons Pinball Party, The (3.00 Italian)"}, {"id": "simp300l", "name": "Simpsons Pinball Party, The (3.00 Spanish)"}, {"id": "simp300", "name": "Simpsons Pinball Party, The (3.00)"}, {"id": "simp400f", "name": "Simpsons Pinball Party, The (4.00 French)"}, {"id": "simp400g", "name": "Simpsons Pinball Party, The (4.00 German)"}, {"id": "simp400i", "name": "Simpsons Pinball Party, The (4.00 Italian)"}, {"id": "simp400l", "name": "Simpsons Pinball Party, The (4.00 Spanish)"}, {"id": "simp400", "name": "Simpsons Pinball Party, The (4.00)"}, {"id": "simpprtf", "name": "Simpsons Pinball Party, The (5.00 French)"}, {"id": "simpprtg", "name": "Simpsons Pinball Party, The (5.00 German)"}, {"id": "simpprti", "name": "Simpsons Pinball Party, The (5.00 Italian)"}, {"id": "simpprtl", "name": "Simpsons Pinball Party, The (5.00 Spanish)"}, {"id": "simpprty", "name": "Simpsons Pinball Party, The (5.00)"}, {"id": "simp_a20", "name": "Simpsons, The (2.0)"}, {"id": "simp_a27", "name": "Simpsons, The (2.7)"}, {"id": "smman", "name": "Six Million Dollar Man, The"}, {"id": "smmand", "name": "Six Million Dollar Man, The (/10 Scoring Free Play)"}, {"id": "smmanc", "name": "Six Million Dollar Man, The (Free Play rev. 3)"}, {"id": "skatebll", "name": "Skateball"}, {"id": "skatebla", "name": "Skateball (Free Play)"}, {"id": "skateblb", "name": "Skateball (Improved attract mode, Free Play rev. 3)"}, {"id": "smanve_101c", "name": "smanve_101c"}, {"id": "socrking", "name": "Soccer Kings"}, {"id": "solar_l2", "name": "Solar Fire (L-2)"}, {"id": "sopr107f", "name": "Sopranos, The (1.07 French)"}, {"id": "sopr107g", "name": "Sopranos, The (1.07 German)"}, {"id": "sopr107i", "name": "Sopranos, The (1.07 Italian)"}, {"id": "sopr107l", "name": "Sopranos, The (1.07 Spanish)"}, {"id": "sopr204", "name": "Sopranos, The (2.04)"}, {"id": "sopr300f", "name": "Sopranos, The (3.00 French)"}, {"id": "sopr300g", "name": "Sopranos, The (3.00 German)"}, {"id": "sopr300i", "name": "Sopranos, The (3.00 Italian)"}, {"id": "sopr300l", "name": "Sopranos, The (3.00 Spanish)"}, {"id": "sopr300", "name": "Sopranos, The (3.00)"}, {"id": "soprano3", "name": "Sopranos, The (3.00, alternative sound)"}, {"id": "sopr400f", "name": "Sopranos, The (4.00 French)"}, {"id": "sopr400g", "name": "Sopranos, The (4.00 German)"}, {"id": "sopr400i", "name": "Sopranos, The (4.00 Italian)"}, {"id": "sopr400l", "name": "Sopranos, The (4.00 Spanish)"}, {"id": "sopr400", "name": "Sopranos, The (4.00)"}, {"id": "sopranof", "name": "Sopranos, The (5.00 French)"}, {"id": "sopranog", "name": "Sopranos, The (5.00 German)"}, {"id": "sopranoi", "name": "Sopranos, The (5.00 Italian)"}, {"id": "sopranol", "name": "Sopranos, The (5.00 Spanish)"}, {"id": "sopranos", "name": "Sopranos, The (5.00)"}, {"id": "sorcr_l1", "name": "Sorcerer (L-1)"}, {"id": "sorcr_l2", "name": "Sorcerer (L-2)"}, {"id": "sprk_103", "name": "South Park (1.03)"}, {"id": "spaceinv", "name": "Space Invaders"}, {"id": "spaceinb", "name": "Space Invaders (7-digit conversion)"}, {"id": "spacejmf", "name": "Space Jam (3.00 French)"}, {"id": "spacejmg", "name": "Space Jam (3.00 German)"}, {"id": "spacejmi", "name": "Space Jam (3.00 Italian)"}, {"id": "spacejam", "name": "Space Jam (3.00)"}, {"id": "sshtl_l7", "name": "Space Shuttle (L-7)"}, {"id": "spstn_l5", "name": "Space Station (L-5)"}, {"id": "speakesy", "name": "Speakeasy"}, {"id": "speakes4", "name": "Speakeasy (4 Players)"}, {"id": "spectru4", "name": "Spectrum (rev. 4)"}, {"id": "smanve_100", "name": "Spider-Man Vault Edition (V1.0)"}, {"id": "smanve_101", "name": "Spider-Man Vault Edition (V1.01)"}, {"id": "splitsec", "name": "Split Second"}, {"id": "sprbreak", "name": "Spring Break"}, {"id": "sprbrkfp", "name": "Spring Break (Free Play)"}, {"id": "sprbrffp", "name": "Spring Break (French Free Play)"}, {"id": "sprbrgfp", "name": "Spring Break (German Free Play)"}, {"id": "sprbrafp", "name": "Spring Break (rev. 1 Free Play)"}, {"id": "sprbrsfp", "name": "Spring Break (Single ball game, Free Play)"}, {"id": "spyhuntr", "name": "Spy Hunter"}, {"id": "spyhunta", "name": "Spy Hunter (Free Play)"}, {"id": "st_161hc", "name": "st_161hc"}, {"id": "st_162c", "name": "st_162c"}, {"id": "st_162hc", "name": "st_162hc"}, {"id": "stargzr", "name": "Star Gazer"}, {"id": "stargoda", "name": "Star God (alternate sound)"}, {"id": "strlt_l1", "name": "Star Light (L-1)"}, {"id": "startrek", "name": "Star Trek"}, {"id": "startred", "name": "Star Trek (/10 Scoring Free Play)"}, {"id": "startreb", "name": "Star Trek (7-digit conversion rev. 20)"}, {"id": "startrec", "name": "Star Trek (Free Play rev. 3)"}, {"id": "st_162", "name": "Star Trek (Stern) (V1.62)"}, {"id": "st_161h", "name": "Star Trek (Stern) Limited Edition (V1.61)"}, {"id": "st_162h", "name": "Star Trek (Stern) Limited Edition (V1.62)"}, {"id": "trek_117", "name": "Star Trek 25th Anniversary (1.17)"}, {"id": "trek_120", "name": "Star Trek 25th Anniversary (1.20)"}, {"id": "trek_200", "name": "Star Trek 25th Anniversary (2.00)"}, {"id": "trek_201", "name": "Star Trek 25th Anniversary (2.01)"}, {"id": "trek_300", "name": "Star Trek 25th Anniversary (3.00 unofficial MOD)"}, {"id": "sttng_d7", "name": "Star Trek: The Next Generation (DX-7 LED Ghost Fix, Sound L-1)"}, {"id": "sttng_dx", "name": "Star Trek: The Next Generation (DX-7 LED Ghost Fix, Special Sound L-1)"}, {"id": "sttng_l7", "name": "Star Trek: The Next Generation (LX-7, Sound L-1)"}, {"id": "sttng_x7", "name": "Star Trek: The Next Generation (LX-7, Special Sound L-1)"}, {"id": "sttng_l7c", "name": "Star Trek: The Next Generation (LX-7C Competition MOD)"}, {"id": "stwr_101", "name": "Star Wars (1.01)"}, {"id": "stwr_102", "name": "Star Wars (1.02)"}, {"id": "stwr_a14", "name": "Star Wars (1.03, Display 1.04)"}, {"id": "stwr_103", "name": "Star Wars (1.03, Display 1.05)"}, {"id": "stwr_104", "name": "Star Wars (1.04 20th Anniversary)"}, {"id": "stwr_106", "name": "Star Wars (1.06 20th Anniversary)"}, {"id": "stwr_107", "name": "Star Wars (1.07 20th Anniversary)"}, {"id": "swtril30", "name": "Star Wars Trilogy Special Edition, The (3.00)"}, {"id": "swtril41", "name": "Star Wars Trilogy Special Edition, The (4.01)"}, {"id": "swtril43", "name": "Star Wars Trilogy Special Edition, The (4.03)"}, {"id": "stars", "name": "Stars"}, {"id": "starsfp", "name": "Stars (Free Play)"}, {"id": "startrp2", "name": "Starship Troopers (2.00)"}, {"id": "startrp", "name": "Starship Troopers (2.01)"}, {"id": "stlwr_l2", "name": "Stellar Wars (L-2)"}, {"id": "stingray", "name": "Stingray"}, {"id": "stingrfp", "name": "Stingray (Free Play)"}, {"id": "sfight2", "name": "Street Fighter II"}, {"id": "strike", "name": "Strike"}, {"id": "strxt_uk", "name": "Striker Xtreme (1.01 English)"}, {"id": "strxt_fr", "name": "Striker Xtreme (1.02 French)"}, {"id": "strxt_it", "name": "Striker Xtreme (1.02 Italian)"}, {"id": "strxt_sp", "name": "Striker Xtreme (1.02 Spanish)"}, {"id": "strikext", "name": "Striker Xtreme (1.02)"}, {"id": "strxt_gr", "name": "Striker Xtreme (1.03 German)"}, {"id": "stk_sprs", "name": "Strikes and Spares"}, {"id": "stk_sprb", "name": "Strikes and Spares (Free Play)"}, {"id": "stk_sprc", "name": "Strikes and Spares (Free Play+)"}, {"id": "suprbowl", "name": "Super Bowl"}, {"id": "smb", "name": "Super Mario Bros."}, {"id": "sst", "name": "Supersonic"}, {"id": "sstd", "name": "Supersonic (/10 Scoring Free Play)"}, {"id": "sstb", "name": "Supersonic (7-digit conversion rev. 20)"}, {"id": "sstc", "name": "Supersonic (Free Play rev. 3)"}, {"id": "surfnsaf", "name": "Surf 'n Safari"}, {"id": "swrds_l2", "name": "Swords of Fury (L-2)"}, {"id": "tagteam", "name": "Tag-Team Pinball"}, {"id": "tagtemfp", "name": "Tag-Team Pinball (Free Play)"}, {"id": "tagtmgfp", "name": "Tag-Team Pinball (German Free Play)"}, {"id": "tagtem2f", "name": "Tag-Team Pinball (rev. 2 Free Play)"}, {"id": "tagteam2", "name": "Tag-Team Pinball (rev. 2)"}, {"id": "tftc_200", "name": "Tales from the Crypt (2.00)"}, {"id": "tftc_300", "name": "Tales from the Crypt (3.00)"}, {"id": "tftc_302", "name": "Tales from the Crypt (3.02 Dutch)"}, {"id": "tftc_303", "name": "Tales from the Crypt (3.03)"}, {"id": "tftc_400", "name": "Tales from the Crypt (4.00 unofficial MOD)"}, {"id": "totan_14", "name": "Tales of the Arabian Nights (1.4 / S1.1)"}, {"id": "taxi_l4", "name": "Taxi (Lola) (L-4)"}, {"id": "tmnt_101", "name": "Teenage Mutant Ninja Turtles (1.01)"}, {"id": "tmnt_103", "name": "Teenage Mutant Ninja Turtles (1.03)"}, {"id": "tmnt_104g", "name": "Teenage Mutant Ninja Turtles (1.04 German)"}, {"id": "tmnt_104", "name": "Teenage Mutant Ninja Turtles (1.04)"}, {"id": "tmnt_a07", "name": "Teenage Mutant Ninja Turtles (A 0.7 VUK Prototype)"}, {"id": "t2_d8", "name": "Terminator 2: Judgment Day (D-8 LED Ghost Fix)"}, {"id": "t2_l8", "name": "Terminator 2: Judgment Day (L-8)"}, {"id": "t2_l81", "name": "Terminator 2: Judgment Day (L-81 Attract Sound patch)"}, {"id": "t2_l82", "name": "Terminator 2: Judgment Day (L-82 Attract Score patch)"}, {"id": "t2_l83", "name": "Terminator 2: Judgment Day (L-83 Profanity, bugfix/MOD, LED Ghost Fix)"}, {"id": "t2_l84", "name": "Terminator 2: Judgment Day (L-84 Profanity, bugfix/MOD, LED Ghost Fix)"}, {"id": "term3", "name": "Terminator 3: Rise of the Machines (4.00)"}, {"id": "tom_13", "name": "Theatre of Magic (1.3X)"}, {"id": "tom_13c", "name": "Theatre of Magic (1.3XC Competition MOD)"}, {"id": "tom_14hb", "name": "Theatre of Magic (1.4H Coin Play)"}, {"id": "tom_14h", "name": "Theatre of Magic (1.4H)"}, {"id": "tom_20", "name": "Theatre of Magic (2.0 Competition MOD)"}, {"id": "thund_p2", "name": "Thunderball (P-2 Prototype)"}, {"id": "thund_p3", "name": "Thunderball (P-3 Prototype)"}, {"id": "tmfnt_l5", "name": "Time Fantasy (L-5)"}, {"id": "tmac_g18", "name": "Time Machine (1.8 German)"}, {"id": "tmac_a18", "name": "Time Machine (1.8)"}, {"id": "tmac_a24", "name": "Time Machine (2.4)"}, {"id": "tmachzac", "name": "Time Machine (Zaccaria)"}, {"id": "tmwrp_l2ff", "name": "Time Warp (L-2 Free Play Fix)"}, {"id": "tmwrp_l2", "name": "Time Warp (L-2)"}, {"id": "tmwrp_l3ff", "name": "Time Warp (L-3 Free Play Fix)"}, {"id": "tmwrp_l3", "name": "Time Warp (L-3)"}, {"id": "tmwrp_t2", "name": "Time Warp (T-2 Ted Estes)"}, {"id": "tmwrp_t2ff", "name": "Time Warp (T-2 Ted Estes, Free Play Fix)"}, {"id": "tfight", "name": "Title Fight"}, {"id": "tmnt_200", "name": "tmnt_200"}, {"id": "tomy_102be", "name": "Tommy Pinball Wizard, The Who's (1.02 Belgian)"}, {"id": "tomy_102", "name": "Tommy Pinball Wizard, The Who's (1.02)"}, {"id": "tomy_301g", "name": "Tommy Pinball Wizard, The Who's (3.01 German)"}, {"id": "tomy_400", "name": "Tommy Pinball Wizard, The Who's (4.00)"}, {"id": "tomy_500", "name": "Tommy Pinball Wizard, The Who's (5.00 unofficial MOD)"}, {"id": "torp_a16", "name": "Torpedo Alley (1.6)"}, {"id": "torp_e21", "name": "Torpedo Alley (2.1 Europe)"}, {"id": "tf_180", "name": "Transformers (V1.8)"}, {"id": "tsptr_l3", "name": "Transporter the Rescue (L-3)"}, {"id": "trizn_l1ff", "name": "Tri Zone (L-1 Free Play Fix)"}, {"id": "trizn_l1", "name": "Tri Zone (L-1)"}, {"id": "trizn_t1", "name": "Tri Zone (T-1 Ted Estes)"}, {"id": "trizn_t1ff", "name": "Tri Zone (T-1 Ted Estes, Free Play Fix)"}, {"id": "trident", "name": "Trident"}, {"id": "tridenfp", "name": "Trident (Old Free Play)"}, {"id": "tridenta", "name": "Trident (Old)"}, {"id": "trn_174h", "name": "TRON: Legacy Limited Edition (V1.74)"}, {"id": "tz_92", "name": "Twilight Zone (9.2)"}, {"id": "tz_93", "name": "Twilight Zone (9.3 LED Ghost Fix)"}, {"id": "tz_94ch", "name": "Twilight Zone (9.4CH Coin Play)"}, {"id": "tz_94h", "name": "Twilight Zone (9.4H)"}, {"id": "twst_405", "name": "Twister (4.05)"}, {"id": "txsector", "name": "TX-Sector"}, {"id": "txsectfp", "name": "TX-Sector (Free Play)"}, {"id": "txsecffp", "name": "TX-Sector (French Free Play)"}, {"id": "txsecgfp", "name": "TX-Sector (German Free Play)"}, {"id": "vrkon_l1", "name": "Varkon (L-1)"}, {"id": "vector", "name": "Vector"}, {"id": "vectora", "name": "Vector (Free Play)"}, {"id": "vegas", "name": "Vegas"}, {"id": "victory", "name": "Victory"}, {"id": "victr101", "name": "Victory (1.01 tournament/competition MOD)"}, {"id": "victr11", "name": "Victory (1.1 tournament/competition MOD)"}, {"id": "victr12", "name": "Victory (1.2 tournament/competition MOD)"}, {"id": "victr13", "name": "Victory (1.3 tournament/competition MOD)"}, {"id": "victryfp", "name": "Victory (Free Play)"}, {"id": "victrffp", "name": "Victory (French Free Play)"}, {"id": "victrgfp", "name": "Victory (German Free Play)"}, {"id": "viking", "name": "Viking"}, {"id": "vikingb", "name": "Viking (7-digit conversion)"}, {"id": "viper", "name": "Viper"}, {"id": "viprsega", "name": "Viper Night Drivin' (2.01)"}, {"id": "vlcno_ax", "name": "Volcano"}, {"id": "voltan", "name": "Voltan Escapes Cosmic Doom"}, {"id": "voltand", "name": "Voltan Escapes Cosmic Doom (/10 Scoring Free Play)"}, {"id": "voltanb", "name": "Voltan Escapes Cosmic Doom (7-digit conversion rev. 20)"}, {"id": "voltanc", "name": "Voltan Escapes Cosmic Doom (Free Play rev. 3)"}, {"id": "twd_156", "name": "Walking Dead, The (V1.56)"}, {"id": "twd_160h", "name": "Walking Dead, The Limited Edition (V1.60.0)"}, {"id": "wrlok_l3", "name": "Warlok (L-3)"}, {"id": "waterwl2", "name": "Waterworld (rev. 2)"}, {"id": "waterwld", "name": "Waterworld (rev. 3)"}, {"id": "waterwl5", "name": "Waterworld (rev. 5)"}, {"id": "whirl_l3", "name": "Whirlwind (LA-3)"}, {"id": "ww_d5", "name": "White Water (D-5 LED Ghost Fix)"}, {"id": "ww_l5", "name": "White Water (L-5)"}, {"id": "ww_lh6c", "name": "White Water (LH-6 Coin Play)"}, {"id": "ww_lh6", "name": "White Water (LH-6)"}, {"id": "wd_12p", "name": "WHO Dunnit (1.2 Elevator text fix)"}, {"id": "wd_12gp", "name": "WHO Dunnit (1.2 German Sound / Elevator text fix)"}, {"id": "wd_12g", "name": "WHO Dunnit (1.2 German Sound)"}, {"id": "wd_12", "name": "WHO Dunnit (1.2)"}, {"id": "wildfyre", "name": "Wild Fyre"}, {"id": "wildfyfp", "name": "Wild Fyre (Free Play)"}, {"id": "wldcp_l1", "name": "World Cup (L-1)"}, {"id": "wcs_d2", "name": "World Cup Soccer (DX-2 LED Ghost Fix)"}, {"id": "wcs_l2", "name": "World Cup Soccer (LX-2)"}, {"id": "wcs_l3c", "name": "World Cup Soccer (LX-3C Competition MOD)"}, {"id": "wwfr_103", "name": "WWF Royal Rumble (1.03)"}, {"id": "wwfr_106", "name": "WWF Royal Rumble (1.06)"}, {"id": "xsandos", "name": "X's & O's"}, {"id": "xsandosa", "name": "X's & O's (Free Play)"}, {"id": "xfiles2", "name": "X-Files, The (2.04)"}, {"id": "xfilesf", "name": "X-Files, The (3.03 French)"}, {"id": "xfiles", "name": "X-Files, The (3.03)"}, {"id": "xfiles304", "name": "X-Files, The (3.04 unofficial MOD)"}, {"id": "xenon", "name": "Xenon"}, {"id": "xenona", "name": "Xenon (Free Play)"}, {"id": "xenonfa", "name": "Xenon (French Free Play)"}, {"id": "xenonf", "name": "Xenon (French)"}];
+
+const tbody = document.getElementById('tbody');
+const countEl = document.getElementById('count');
+const totalEl = document.getElementById('total');
+const noResults = document.getElementById('no-results');
+const searchEl = document.getElementById('search');
+const table = document.getElementById('rom-table');
+
+totalEl.textContent = ROMS.length;
+
+function render(list) {
+  tbody.innerHTML = list.map(r =>
+    `<tr><td>${r.name}</td><td>${r.id}</td></tr>`
+  ).join('');
+  countEl.textContent = list.length;
+  noResults.style.display = list.length === 0 ? 'block' : 'none';
+  table.style.display = list.length === 0 ? 'none' : '';
+}
+
+render(ROMS);
+
+searchEl.addEventListener('input', () => {
+  const q = searchEl.value.trim().toLowerCase();
+  if (!q) { render(ROMS); return; }
+  render(ROMS.filter(r =>
+    r.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)
+  ));
+});
+</script>
+
+</body>
+</html>

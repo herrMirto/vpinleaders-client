@@ -65,12 +65,8 @@ from app_logging import configure_logging, default_log_file, get_logger, log_mes
 from nvram_monitor import NVRAMMonitor
 from screenshot import capture_screen
 
-try:
-    import score_ocr as _score_ocr
-    _SCORE_OCR_AVAILABLE = True
-except ImportError:
-    _score_ocr = None
-    _SCORE_OCR_AVAILABLE = False
+_score_ocr = None
+_SCORE_OCR_AVAILABLE = None
 
 
 # =========================
@@ -160,19 +156,36 @@ def _detect_score_from_screenshot(pil_image) -> int:
     Convert a PIL screenshot to OpenCV format and run score_ocr on it.
     Returns the detected score as int, or 0 if nothing was found.
     """
-    if not _SCORE_OCR_AVAILABLE or pil_image is None:
+    score_ocr = _get_score_ocr()
+    if score_ocr is None or pil_image is None:
         return 0
     try:
         import numpy as np
         import cv2
         img_rgb = np.array(pil_image.convert('RGB'))
         img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-        result = _score_ocr.detect_score(img_bgr)
+        result = score_ocr.detect_score(img_bgr)
         if result.best and result.best.score:
             return int(result.best.score)
     except Exception as e:
         _log('WARN', f'Score OCR error: {e}')
     return 0
+
+
+def _get_score_ocr():
+    global _score_ocr, _SCORE_OCR_AVAILABLE
+    if _SCORE_OCR_AVAILABLE is False:
+        return None
+    if _score_ocr is not None:
+        return _score_ocr
+    try:
+        import score_ocr as module
+    except ImportError:
+        _SCORE_OCR_AVAILABLE = False
+        return None
+    _score_ocr = module
+    _SCORE_OCR_AVAILABLE = True
+    return _score_ocr
 
 
 def _get_best_available_rom() -> str:
@@ -901,7 +914,7 @@ def _trigger_manual_send(source):
             # OCR fallback: no NVRAM score → take a screenshot and detect score
             # ------------------------------------------------------------------
             if ocr_needed:
-                if not _SCORE_OCR_AVAILABLE:
+                if _get_score_ocr() is None:
                     _log('WARN', 'score_ocr module not available. Install pytesseract and/or easyocr.')
                     show_notification('No Score', 'No NVRAM score and OCR is unavailable.', kind='error')
                     return
@@ -986,15 +999,41 @@ class _JoyButtonListener:
         self._stop_event = threading.Event()
         self._thread = None
         self._combo_active = False
+        self._pygame = None
+        self._joysticks = []
+        self._last_count = 0
+        self._timer = None
+
+    def _use_qt_timer(self):
+        return platform.system() == 'Darwin'
 
     def start(self):
-        if self._thread is not None:
+        if self._thread is not None or self._timer is not None:
+            return
+        if self._use_qt_timer():
+            if self._init_pygame():
+                try:
+                    from PyQt6.QtCore import QTimer
+                    self._timer = QTimer()
+                    self._timer.setInterval(30)
+                    self._timer.timeout.connect(self._poll_once)
+                    self._timer.start()
+                except Exception as exc:
+                    _log('WARN', f'Joystick listener unavailable: Qt timer failed ({exc})')
+                    self._shutdown_pygame()
             return
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._stop_event.set()
+        if self._timer is not None:
+            try:
+                self._timer.stop()
+            except Exception:
+                pass
+            self._timer = None
+            self._shutdown_pygame()
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=1.0)
         self._thread = None
@@ -1007,20 +1046,31 @@ class _JoyButtonListener:
         except Exception:
             return []
 
-    def _run(self):
+    def _init_pygame(self):
         os.environ.setdefault('SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS', '1')
+        os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
+        if platform.system() == 'Darwin':
+            # The app already owns the Cocoa/Qt event loop. For joystick polling,
+            # keep pygame's SDL video backend away from Cocoa to avoid AppKit
+            # event pumping crashes and SDL class collisions with OpenCV.
+            os.environ.setdefault('SDL_VIDEODRIVER', 'dummy')
         try:
-            import pygame
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='pkg_resources is deprecated as an API.*')
+                import pygame
         except Exception as exc:
             _log('WARN', f'Joystick listener unavailable: pygame import failed ({exc})')
-            return
+            return False
 
         try:
             pygame.init()
             pygame.joystick.init()
         except Exception as exc:
             _log('WARN', f'Joystick listener unavailable: pygame init failed ({exc})')
-            return
+            return False
+
+        self._pygame = pygame
 
         _log(
             'INFO',
@@ -1029,52 +1079,70 @@ class _JoyButtonListener:
                 f'buttons={",".join(str(b) for b in self.buttons)}'
             ),
         )
-        joysticks = self._refresh_joysticks(pygame)
-        last_count = len(joysticks)
-        if last_count == 0:
+        self._joysticks = self._refresh_joysticks(pygame)
+        self._last_count = len(self._joysticks)
+        if self._last_count == 0:
             _log('WARN', 'Joystick listener started but no joystick/gamepad is available')
+        return True
 
+    def _shutdown_pygame(self):
+        pygame = self._pygame
+        self._pygame = None
+        self._joysticks = []
+        self._last_count = 0
+        if pygame is None:
+            return
+        try:
+            pygame.joystick.quit()
+        except Exception:
+            pass
+        try:
+            pygame.quit()
+        except Exception:
+            pass
+
+    def _poll_once(self):
+        pygame = self._pygame
+        if pygame is None:
+            return
+        try:
+            pygame.event.pump()
+        except Exception:
+            pass
+
+        current_count = 0
+        try:
+            current_count = pygame.joystick.get_count()
+        except Exception:
+            current_count = self._last_count
+        if current_count != self._last_count:
+            self._joysticks = self._refresh_joysticks(pygame)
+            self._last_count = len(self._joysticks)
+
+        combo_pressed = False
+        for joy in self._joysticks:
+            try:
+                if all(joy.get_button(btn) for btn in self.buttons):
+                    combo_pressed = True
+                    break
+            except Exception:
+                continue
+
+        if combo_pressed and not self._combo_active:
+            self._combo_active = True
+            _trigger_manual_send('Joybutton')
+        elif not combo_pressed:
+            self._combo_active = False
+
+    def _run(self):
+        if not self._init_pygame():
+            return
         try:
             while not self._stop_event.is_set():
-                try:
-                    pygame.event.pump()
-                except Exception:
-                    pass
-
-                current_count = 0
-                try:
-                    current_count = pygame.joystick.get_count()
-                except Exception:
-                    current_count = last_count
-                if current_count != last_count:
-                    joysticks = self._refresh_joysticks(pygame)
-                    last_count = len(joysticks)
-
-                combo_pressed = False
-                for joy in joysticks:
-                    try:
-                        if all(joy.get_button(btn) for btn in self.buttons):
-                            combo_pressed = True
-                            break
-                    except Exception:
-                        continue
-
-                if combo_pressed and not self._combo_active:
-                    self._combo_active = True
-                    _trigger_manual_send('Joybutton')
-                elif not combo_pressed:
-                    self._combo_active = False
-
+                self._poll_once()
                 time.sleep(0.03)
         finally:
-            try:
-                pygame.joystick.quit()
-            except Exception:
-                pass
-            try:
-                pygame.quit()
-            except Exception:
-                pass
+            self._shutdown_pygame()
 
 
 def _four_char_code(value: str) -> int:
@@ -2028,16 +2096,6 @@ def _run_desktop_app():
     )
 
     _start_nvram_monitor()
-
-    if _SCORE_OCR_AVAILABLE:
-        def _warmup_ocr():
-            _log('INFO', 'Pre-loading EasyOCR model for screenshot score detection...')
-            try:
-                _score_ocr.warmup()
-                _log('INFO', 'EasyOCR model ready')
-            except Exception as e:
-                _log('WARN', f'EasyOCR warmup failed (OCR will still work, first call may be slow): {e}')
-        threading.Thread(target=_warmup_ocr, daemon=True).start()
 
     _refresh_manual_send_listeners()
     if not _any_integration_enabled():

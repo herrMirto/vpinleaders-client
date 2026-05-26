@@ -1,4 +1,4 @@
-name: Build VPinLeaders Client
+name: Build VPinScore
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
     tags: ["v*"]
     paths-ignore:
       - "README.md"
+      - "www/**"
   workflow_dispatch:
 
 jobs:
@@ -54,23 +55,23 @@ jobs:
             --clean \
             --onedir \
             --windowed \
-            --name VPinLeaders-Linux-x64 \
+            --name VPinScore-Linux-x64 \
             --add-data "assets:assets" \
             --add-data "config.example.ini:." \
             --add-data "nvram-maps:nvram-maps" \
             --hidden-import="pynput.keyboard._xorg" \
             --hidden-import="pynput.mouse._xorg" \
             main.py
-          cp linux/vpinleaders-start.sh dist/vpinleaders-start.sh
-          chmod +x dist/vpinleaders-start.sh
+          cp linux/vpinscore-start.sh dist/vpinscore-start.sh
+          chmod +x dist/vpinscore-start.sh
           cd dist
-          zip -qry VPinLeaders-Linux-x64.zip VPinLeaders-Linux-x64 vpinleaders-start.sh
+          zip -qry VPinScore-Linux-x64.zip VPinScore-Linux-x64 vpinscore-start.sh
 
       - name: Upload Linux desktop artifact
         uses: actions/upload-artifact@v7
         with:
-          name: VPinLeaders-Linux-x64.zip
-          path: dist/VPinLeaders-Linux-x64.zip
+          name: VPinScore-Linux-x64.zip
+          path: dist/VPinScore-Linux-x64.zip
           archive: false
 
   build-windows:
@@ -91,14 +92,14 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller --noconfirm --onefile --add-data "assets;assets" --add-data "config.example.ini;." --add-data "nvram-maps;nvram-maps" --icon "assets/icon.ico" --hidden-import="pynput.keyboard._win32" --hidden-import="pynput.mouse._win32" --name "VPinLeaders-Windows-x64" main.py
-          Compress-Archive -Path dist/VPinLeaders-Windows-x64.exe -DestinationPath dist/VPinLeaders-Windows-x64.zip -Force
+          pyinstaller --noconfirm --onefile --add-data "assets;assets" --add-data "config.example.ini;." --add-data "nvram-maps;nvram-maps" --icon "assets/icon.ico" --hidden-import="pynput.keyboard._win32" --hidden-import="pynput.mouse._win32" --name "VPinScore-Windows-x64" main.py
+          Compress-Archive -Path dist/VPinScore-Windows-x64.exe -DestinationPath dist/VPinScore-Windows-x64.zip -Force
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: VPinLeaders-Windows-x64.zip
-          path: dist/VPinLeaders-Windows-x64.zip
+          name: VPinScore-Windows-x64.zip
+          path: dist/VPinScore-Windows-x64.zip
           archive: false
 
   build-macos-arm64:
@@ -119,13 +120,49 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller --noconfirm --onefile --windowed --add-data "assets:assets" --add-data "config.example.ini:." --add-data "nvram-maps:nvram-maps" --icon "assets/icon.icns" --hidden-import="pynput.keyboard._darwin" --hidden-import="pynput.mouse._darwin" --name "VPinLeaders-macOS-arm64" main.py
+          pyinstaller --noconfirm --onefile --windowed --add-data "assets:assets" --add-data "config.example.ini:." --add-data "nvram-maps:nvram-maps" --icon "assets/icon.icns" --hidden-import="pynput.keyboard._darwin" --hidden-import="pynput.mouse._darwin" --name "VPinScore-macOS-arm64" main.py
           cd dist
-          zip -qry VPinLeaders-macOS-arm64.zip VPinLeaders-macOS-arm64
+          zip -qry VPinScore-macOS-arm64.zip VPinScore-macOS-arm64
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: VPinLeaders-macOS-arm64.zip
-          path: dist/VPinLeaders-macOS-arm64.zip
+          name: VPinScore-macOS-arm64.zip
+          path: dist/VPinScore-macOS-arm64.zip
           archive: false
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-linux, build-windows, build-macos-arm64]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VPinScore-Linux-x64.zip
+          path: dist
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VPinScore-Windows-x64.zip
+          path: dist
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VPinScore-macOS-arm64.zip
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "VPinScore ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: |
+            dist/VPinScore-Linux-x64.zip
+            dist/VPinScore-Windows-x64.zip
+            dist/VPinScore-macOS-arm64.zip

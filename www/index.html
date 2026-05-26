@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VPinScore</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f6f8fa;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --muted: #57606a;
+      --accent: #0969da;
+      --accent-dim: #0550ae;
+      --green: #1a7f37;
+      --code-bg: #f6f8fa;
+      --radius: 6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.75;
+      font-size: 16px;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .logo {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo svg { color: var(--accent); }
+
+    nav { display: flex; gap: 20px; margin-left: auto; }
+
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.15s;
+    }
+
+    nav a:hover, nav a.active { color: var(--text); }
+
+    .page-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 36px 24px 28px;
+    }
+
+    .page-header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .page-header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .page-header p {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 40px;
+      align-items: start;
+    }
+
+    aside {
+      position: sticky;
+      top: 64px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 16px 0;
+      font-size: 0.875rem;
+    }
+
+    aside h4 {
+      padding: 0 16px 10px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    aside a {
+      display: block;
+      padding: 5px 16px;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.15s, background 0.15s;
+      border-left: 2px solid transparent;
+    }
+
+    aside a:hover { color: var(--text); background: rgba(0,0,0,0.04); }
+    aside a.active { color: var(--accent); border-left-color: var(--accent); }
+
+    article h2 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      margin: 40px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      scroll-margin-top: 80px;
+    }
+
+    article h2:first-child { margin-top: 0; }
+
+    article h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 28px 0 10px;
+      color: var(--text);
+      scroll-margin-top: 80px;
+    }
+
+    article p { margin-bottom: 14px; color: var(--text); }
+
+    article a { color: var(--accent); text-decoration: none; }
+    article a:hover { text-decoration: underline; }
+
+    article ul, article ol {
+      margin: 0 0 14px 20px;
+      color: var(--text);
+    }
+
+    article li { margin-bottom: 4px; }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      overflow-x: auto;
+      margin: 12px 0 20px;
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+
+    code {
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.875em;
+    }
+
+    p code, li code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 2px 6px;
+    }
+
+    .callout {
+      background: rgba(9,105,218,0.06);
+      border: 1px solid rgba(9,105,218,0.2);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin: 14px 0;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+
+    .platform-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+
+    .platform-card {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .platform-card h4 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .platform-card .version-tag {
+      font-size: 0.7rem;
+      font-weight: 500;
+      background: rgba(9,105,218,0.1);
+      color: var(--accent);
+      border: 1px solid rgba(9,105,218,0.2);
+      border-radius: 20px;
+      padding: 1px 7px;
+      font-family: "JetBrains Mono", monospace;
+    }
+
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 14px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius);
+      font-size: 0.8rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.15s, opacity 0.15s;
+      border: none;
+      cursor: pointer;
+      width: fit-content;
+    }
+
+    .download-btn:hover { background: var(--accent-dim); text-decoration: none; }
+    .download-btn:disabled, .download-btn.loading {
+      background: var(--border);
+      color: var(--muted);
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .download-filename {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+      word-break: break-all;
+    }
+
+    .release-error {
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 12px 0;
+    }
+
+    .release-error a { color: var(--accent); }
+
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 24px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    aside a.sub {
+      padding-left: 28px;
+      font-size: 0.825rem;
+    }
+
+    @media (max-width: 700px) {
+      main { grid-template-columns: 1fr; }
+      aside { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a class="logo" href="index.html">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <circle cx="12" cy="12" r="3"/>
+        <line x1="12" y1="2" x2="12" y2="5"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="5" y2="12"/>
+        <line x1="19" y1="12" x2="22" y2="12"/>
+      </svg>
+      VPinScore
+    </a>
+    <nav>
+      <a href="index.html" class="active">Docs</a>
+      <a href="roms.html">Supported ROMs</a>
+    </nav>
+  </div>
+</header>
+
+<div class="page-header">
+  <div class="page-header-inner">
+    <h1>VPinScore</h1>
+    <p>A score tracker for Visual Pinball X cabinets and desktop setups. Watches your games, captures final scores, and submits results to your favourite leaderboard services.</p>
+  </div>
+</div>
+
+<main>
+  <aside>
+    <h4>On this page</h4>
+    <a href="#before-you-start">Before You Start</a>
+    <a href="#download">Download</a>
+    <a href="#platform-setup">Platform Setup</a>
+    <a href="#linux" class="sub">Linux x64</a>
+    <a href="#macos" class="sub">macOS arm64</a>
+    <a href="#windows" class="sub">Windows x64</a>
+    <a href="#integrations">Integrations</a>
+    <a href="#vpinplay" class="sub">VPinPlay</a>
+    <a href="#wovp" class="sub">WoVP</a>
+    <a href="#iscored" class="sub">iScored</a>
+    <a href="#source-run">Source Run</a>
+    <a href="#nvram-maps">NVRAM Maps</a>
+  </aside>
+
+  <article>
+
+    <h2 id="before-you-start">Before You Start</h2>
+    <p>You need:</p>
+    <ul>
+      <li>A working <strong>VPX 10.8.1</strong> setup</li>
+      <li>The latest build artifact for your operating system (see <a href="#download">Download</a> below)</li>
+    </ul>
+    <p>Your tables folder should follow the
+      <a href="https://github.com/vpinball/vpinball/blob/master/docs/FileLayout.md" target="_blank">VPX 10.8.1 File Layout</a>.
+    </p>
+
+    <h2 id="download">Download</h2>
+    <p>The latest release is fetched automatically. Click the button for your platform to download.</p>
+    <div id="download-section">
+      <div class="platform-grid">
+        <div class="platform-card">
+          <h4>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            macOS arm64
+          </h4>
+          <a class="download-btn loading" id="dl-macos" href="#" aria-disabled="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Loading…
+          </a>
+          <span class="download-filename" id="fn-macos"></span>
+        </div>
+        <div class="platform-card">
+          <h4>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Windows x64
+          </h4>
+          <a class="download-btn loading" id="dl-windows" href="#" aria-disabled="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Loading…
+          </a>
+          <span class="download-filename" id="fn-windows"></span>
+        </div>
+        <div class="platform-card">
+          <h4>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Linux x64
+          </h4>
+          <a class="download-btn loading" id="dl-linux" href="#" aria-disabled="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Loading…
+          </a>
+          <span class="download-filename" id="fn-linux"></span>
+        </div>
+      </div>
+    </div>
+
+    <h2 id="platform-setup">Platform Setup</h2>
+
+    <h3 id="macos">macOS arm64</h3>
+    <ol>
+      <li>Unzip <code>VPinScore-macOS-arm64.zip</code></li>
+      <li>Remove the quarantine attribute:</li>
+    </ol>
+    <pre><code>xattr -d com.apple.quarantine VPinScore-macOS-arm64</code></pre>
+    <ol start="3">
+      <li>Run the client and complete the first-run setup:</li>
+    </ol>
+    <pre><code>./VPinScore-macOS-arm64</code></pre>
+
+    <h3 id="windows">Windows x64</h3>
+    <ol>
+      <li>Download <code>VPinScore-Windows-x64.zip</code></li>
+      <li>Right-click the downloaded <code>.zip</code>, open <strong>Properties</strong>, and click <strong>Unblock</strong></li>
+      <li>Unzip it</li>
+      <li>Run the app and complete the first-run setup:</li>
+    </ol>
+    <pre><code>.\VPinScore-Windows-x64.exe</code></pre>
+
+    <h3 id="linux">Linux x64</h3>
+    <ol>
+      <li>Unzip <code>VPinScore-Linux-x64.zip</code></li>
+      <li>Start the app with the bundled launcher and complete the first-run setup:</li>
+    </ol>
+    <pre><code>./vpinst-start.sh</code></pre>
+    <p>The launcher exists because Linux needs extra permission to read live VPX data. It applies the required capability for the packaged binary:</p>
+    <pre><code>sudo setcap cap_sys_ptrace=eip /path/to/VPinScore-Linux-x64/VPinScore-Linux-x64</code></pre>
+    <div class="callout">You may be prompted for <code>sudo</code> the first time the launcher runs.</div>
+
+    <h2 id="integrations">Integrations</h2>
+    <p>First-run setup creates the config file automatically in the correct location:</p>
+    <ul>
+      <li><strong>Linux:</strong> <code>~/.config/vpinscore/config.ini</code></li>
+      <li><strong>macOS:</strong> <code>~/Library/Application Support/VPinScore/config.ini</code></li>
+      <li><strong>Windows:</strong> <code>%APPDATA%\VPinScore\config.ini</code></li>
+    </ul>
+    <p>After the first run, use the tray menu to open <strong>Settings</strong>. From there you can enable integrations and choose the display used for screenshots.</p>
+
+    <h3 id="vpinplay">VPinPlay</h3>
+    <p>VPinPlay lets the client sync scores to your own local or network VPinPlay instance.</p>
+    <ol>
+      <li>Start your VPinPlay instance.</li>
+      <li>Open the client tray menu.</li>
+      <li>Choose <strong>Settings</strong>.</li>
+      <li>Enable <strong>VPinPlay</strong>.</li>
+      <li>Enter the VPinPlay URL, user ID, and initials. If VPinFE is installed, the client loads these values from <code>vpinfe.ini</code>.</li>
+      <li>Turn on automatic VPinPlay sending if you want scores synced as soon as a game ends.</li>
+      <li>Save the settings.</li>
+    </ol>
+
+    <h3 id="wovp">WoVP Challenges</h3>
+    <p>WoVP lets the client submit scores to active challenges.</p>
+    <ol>
+      <li>Sign in at <a href="https://worldofvirtualpinball.com/en" target="_blank">worldofvirtualpinball.com</a>.</li>
+      <li>Create a WoVP API key in your account settings.</li>
+      <li>Open the client tray menu.</li>
+      <li>Choose <strong>Settings</strong>.</li>
+      <li>Enable <strong>WoVP</strong>.</li>
+      <li>Paste your WoVP API key.</li>
+      <li>Save the settings.</li>
+    </ol>
+    <div class="callout">WoVP submissions require a screenshot. The client captures the configured display when you trigger a manual send.</div>
+    <p>When WoVP is enabled, the client loads active challenges at startup and shows them in the tray menu. Select the challenge you want to submit to before sending a score.</p>
+
+    <h3 id="iscored">iScored Gamerooms</h3>
+    <p>iScored lets the client submit scores to an iScored gameroom.</p>
+    <ol>
+      <li>In iScored, make sure your gameroom allows score submissions.</li>
+      <li>Open the client tray menu.</li>
+      <li>Choose <strong>Settings</strong>.</li>
+      <li>Enable <strong>iScored</strong>.</li>
+      <li>Enter your iScored username.</li>
+      <li>Save the settings.</li>
+    </ol>
+    <p>After iScored is configured, the client loads your gameroom games and shows them under <strong>iScored &gt; Games</strong> in the tray menu. Select the game you want to submit to before sending a score.</p>
+
+    <h2 id="source-run">Source Run</h2>
+    <p>If you want to run from source instead of the packaged artifacts:</p>
+    <pre><code>pip install -r requirements.txt
+python3 main.py</code></pre>
+    <p>Optional explicit config path for development and testing only:</p>
+    <pre><code>python3 main.py --config /path/to/config.ini</code></pre>
+
+    <h2 id="nvram-maps">NVRAM Maps</h2>
+    <p>The <code>nvram-maps/</code> directory contains JSON map files that describe how each pinball ROM stores scores and game state inside its non-volatile RAM (<code>.nv</code> files).</p>
+    <p>This project makes use of content from the
+      <a href="https://github.com/tomlogic/pinmame-nvram-maps" target="_blank">Pinball Memory Maps</a> project,
+      licensed under the <strong>GNU Lesser General Public License v3.0 (LGPL-3.0)</strong>.
+    </p>
+    <p>The upstream map files are included unmodified where available. A local fork is maintained for two reasons:</p>
+    <ul>
+      <li><strong>Extended maps</strong> — some ROMs are not yet covered by the upstream project, or need additional <code>game_state</code> fields that go beyond its current scope.</li>
+      <li><strong>Custom conventions</strong> — a few maps deviate slightly from the upstream format to accommodate edge cases specific to this client.</li>
+    </ul>
+    <p>The intention is to upstream all compatible additions back to the
+      <a href="https://github.com/tomlogic/pinmame-nvram-maps" target="_blank">tomlogic/pinmame-nvram-maps</a>
+      project once they are stable and conform to its file-format conventions.
+    </p>
+    <p>See the full list of supported ROMs on the <a href="roms.html">Supported ROMs</a> page.</p>
+
+  </article>
+</main>
+
+<footer>
+  VPinScore &mdash; open source score tracker for Visual Pinball X
+</footer>
+
+<script>
+  // ── Config ───────────────────────────────────────────────────────────────
+  // Set this to your GitHub repository in the format "owner/repo"
+  const GITHUB_REPO = 'your-username/your-repo';
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Sidebar scroll-spy — uses IntersectionObserver so the active link
+  // matches whichever heading is actually visible near the top of the viewport.
+  const links = document.querySelectorAll('aside a');
+  const headings = document.querySelectorAll('article h2[id], article h3[id]');
+
+  function setActive(id) {
+    links.forEach(a => {
+      a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+    });
+  }
+
+  const observer = new IntersectionObserver(
+    entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) setActive(entry.target.id);
+      });
+    },
+    {
+      // Fire when a heading crosses into the top 20% of the viewport,
+      // below the sticky header (~50px). Negative bottom margin means
+      // only headings near the top of the screen trigger the update.
+      rootMargin: '-55px 0px -75% 0px',
+      threshold: 0,
+    }
+  );
+
+  headings.forEach(h => observer.observe(h));
+
+  // Download buttons — fetch latest GitHub Release
+  const PLATFORMS = [
+    { id: 'macos',   keywords: ['macos', 'mac', 'darwin', 'arm64'], label: 'macOS arm64' },
+    { id: 'windows', keywords: ['windows', 'win'],                  label: 'Windows x64' },
+    { id: 'linux',   keywords: ['linux'],                           label: 'Linux x64'   },
+  ];
+
+  async function loadRelease() {
+    if (GITHUB_REPO === 'your-username/your-repo') return; // placeholder not set yet
+
+    let release;
+    try {
+      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+      if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+      release = await res.json();
+    } catch (err) {
+      // Silently leave buttons in loading state — no release published yet
+      return;
+    }
+
+    const version = release.tag_name;
+    const assets  = release.assets || [];
+
+    PLATFORMS.forEach(({ id, keywords, label }) => {
+      const btn = document.getElementById(`dl-${id}`);
+      const fn  = document.getElementById(`fn-${id}`);
+      if (!btn) return;
+
+      const asset = assets.find(a =>
+        keywords.some(k => a.name.toLowerCase().includes(k))
+      );
+
+      if (asset) {
+        btn.href = asset.browser_download_url;
+        btn.className = 'download-btn';
+        btn.removeAttribute('aria-disabled');
+        btn.innerHTML = `
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download ${version}`;
+        fn.textContent = asset.name;
+
+        // Inject version badge next to platform title
+        const h4 = btn.closest('.platform-card').querySelector('h4');
+        if (h4 && !h4.querySelector('.version-tag')) {
+          const badge = document.createElement('span');
+          badge.className = 'version-tag';
+          badge.textContent = version;
+          h4.appendChild(badge);
+        }
+      } else {
+        btn.textContent = 'Not available';
+        btn.className = 'download-btn loading';
+      }
+    });
+  }
+
+  loadRelease();
+</script>
+
+</body>
+</html>

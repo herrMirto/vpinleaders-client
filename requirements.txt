@@ -4,7 +4,7 @@ Pillow
 screeninfo
 pynput
 numpy
-opencv-python
+opencv-python-headless
 dbus-next
 mss
 pygame
