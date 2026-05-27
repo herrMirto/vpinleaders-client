@@ -84,12 +84,13 @@ def _log(level, msg):
 # =========================
 config = configparser.ConfigParser()
 
-# Per-integration enable flags. Multiple integrations can be on at the same
-# time; a single manual send fans out to every enabled one.
+# Per-integration enable flags. Exactly one score destination should be active
+# at a time; the booleans remain as compatibility state for older config paths.
 WOVP_ENABLED = False
 ISCORED_ENABLED = False
 VPINPLAY_ENABLED = False
 VPINPLAY_AUTO_SEND = False
+ACTIVE_SCORE_DESTINATION = ''
 
 # NVRAM source settings
 NVRAM_DIR = ''
@@ -345,10 +346,45 @@ def _truthy(value: str) -> bool:
     return str(value or '').strip().lower() in ('1', 'true', 'yes', 'on')
 
 
+def _normalize_destination(value: str) -> str:
+    dest = str(value or '').strip().lower()
+    return dest if dest in ('vpinplay', 'wovp', 'iscored') else ''
+
+
+def _legacy_active_destination() -> str:
+    for name, enabled in (
+        ('vpinplay', VPINPLAY_ENABLED),
+        ('wovp', WOVP_ENABLED),
+        ('iscored', ISCORED_ENABLED),
+    ):
+        if enabled:
+            return name
+    return ''
+
+
+def _apply_active_destination(destination: str) -> None:
+    global WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED, ACTIVE_SCORE_DESTINATION
+    ACTIVE_SCORE_DESTINATION = _normalize_destination(destination)
+    VPINPLAY_ENABLED = ACTIVE_SCORE_DESTINATION == 'vpinplay'
+    WOVP_ENABLED = ACTIVE_SCORE_DESTINATION == 'wovp'
+    ISCORED_ENABLED = ACTIVE_SCORE_DESTINATION == 'iscored'
+
+
+def _write_active_destination(destination: str) -> None:
+    destination = _normalize_destination(destination)
+    if 'integrations' not in config:
+        config['integrations'] = {}
+    config['integrations']['active_destination'] = destination
+    for name in ('vpinplay', 'wovp', 'iscored'):
+        if name not in config:
+            config[name] = {}
+        config[name]['enable'] = 'true' if name == destination else 'false'
+
+
 def load_config():
     global SCREENSHOT_SCREEN_ID, SCREENSHOT_MAX_WIDTH, SCREENSHOT_JPEG_QUALITY
     global MANUAL_SEND_KEYBOARD_BINDING, MANUAL_SEND_JOYSTICK_BUTTONS
-    global WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED, VPINPLAY_AUTO_SEND
+    global WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED, VPINPLAY_AUTO_SEND, ACTIVE_SCORE_DESTINATION
     global NVRAM_DIR, LOG_FILE_PATH, CONFIG_PATH
 
     CONFIG_PATH = _config_path()
@@ -385,6 +421,11 @@ def load_config():
     else:
         VPINPLAY_ENABLED = False
         VPINPLAY_AUTO_SEND = False
+
+    configured_destination = _normalize_destination(
+        config.get('integrations', 'active_destination', fallback='')
+    )
+    _apply_active_destination(configured_destination or _legacy_active_destination())
 
     # ── Screenshot ────────────────────────────────────────────────────────
     if 'screenshot' in config:
@@ -425,17 +466,10 @@ def load_config():
     except Exception as e:
         _log('WARN', f'Could not enumerate monitors: {e}')
 
-    enabled_labels = ','.join(
-        name for name, on in (
-            ('vpinplay', VPINPLAY_ENABLED),
-            ('wovp', WOVP_ENABLED),
-            ('iscored', ISCORED_ENABLED),
-        ) if on
-    ) or 'none'
     _log(
         'INFO',
         (
-            f'Config loaded. enabled={enabled_labels} | '
+            f'Config loaded. active_destination={ACTIVE_SCORE_DESTINATION or "none"} | '
             f'vpinplay_auto_send={"on" if VPINPLAY_AUTO_SEND else "off"} | '
             f'nvram_base_dir={NVRAM_DIR} | nvram_pattern={NVRAM_SCAN_PATTERN} | '
             f'manual_inputs=keyboard:{"on" if _keyboard_binding_enabled() else "off"},'
@@ -694,7 +728,7 @@ def send_vpinplay_score(table_name, score, vpx_file: str = ''):
 
 
 def _trigger_vpinplay_auto_send(rom, score, vpx_file: str = ''):
-    if not VPINPLAY_ENABLED or not VPINPLAY_AUTO_SEND:
+    if ACTIVE_SCORE_DESTINATION != 'vpinplay' or not VPINPLAY_AUTO_SEND:
         return
 
     def _runner():
@@ -895,17 +929,14 @@ def _trigger_manual_send(source):
         global _manual_send_inflight, _manual_send_last_signature
         nonlocal rom, score, vpx_file
         try:
-            targets = []
-            if VPINPLAY_ENABLED:
-                targets.append('vpinplay')
-            if WOVP_ENABLED:
-                targets.append('wovp')
-            if ISCORED_ENABLED:
-                targets.append('iscored')
-
-            if not targets:
-                _log('WARN', f'{source} pressed but no integration is enabled')
-                show_notification('No Integration', 'Enable at least one integration in Settings.', kind='error')
+            target = ACTIVE_SCORE_DESTINATION
+            if not target:
+                _log('WARN', f'{source} pressed but no score destination is selected')
+                show_notification('No Destination', 'Choose a score destination in Settings.', kind='error')
+                return
+            if not _integration_configured(target):
+                _log('WARN', f'{source} pressed but {target} is not configured')
+                show_notification('Setup Needed', 'Finish setting up the selected score destination.', kind='error')
                 return
 
             screenshot = None
@@ -956,28 +987,28 @@ def _trigger_manual_send(source):
             # ------------------------------------------------------------------
             # Normal path: capture screenshot for integrations that need it
             # ------------------------------------------------------------------
-            if screenshot is None and ('wovp' in targets or 'iscored' in targets):
+            if screenshot is None and target in ('wovp', 'iscored'):
                 _log('INFO', 'Capturing screenshot for manual send')
                 screenshot = capture_screen(
                     screen_id=SCREENSHOT_SCREEN_ID,
                     max_width=SCREENSHOT_MAX_WIDTH,
                 )
 
-            _log('INFO', f'Manual send fan-out: {",".join(targets)}')
+            _log('INFO', f'Manual send destination: {target}')
 
-            if 'vpinplay' in targets:
+            if target == 'vpinplay':
                 try:
                     send_vpinplay_score(rom, score, vpx_file=vpx_file)
                 except Exception as e:
                     _log('ERROR', f'VPinPlay submission raised: {e}')
 
-            if 'wovp' in targets:
+            if target == 'wovp':
                 try:
                     send_wovp_score(rom, score, screenshot, vpx_file=vpx_file)
                 except Exception as e:
                     _log('ERROR', f'WoVP submission raised: {e}')
 
-            if 'iscored' in targets:
+            if target == 'iscored':
                 try:
                     send_iscored_score(rom, score, vpx_file=vpx_file, screenshot_image=screenshot)
                 except Exception as e:
@@ -1516,8 +1547,8 @@ def _integration_configured(name: str) -> bool:
 
 
 def _refresh_manual_send_listeners():
-    """Start/stop the hotkey + joystick listeners based on whether any
-    integration is enabled. Safe to call repeatedly."""
+    """Start/stop the hotkey + joystick listeners based on the active score
+    destination. Safe to call repeatedly."""
     if _any_integration_enabled():
         _start_manual_send_listeners()
     else:
@@ -1585,8 +1616,6 @@ def _refresh_wovp_challenges_bg():
                 tray.wovp_challenges_loaded.emit(challenges)
             except Exception as e:
                 _log('WARN', f'WoVP menu refresh signal failed: {e}')
-        if challenges:
-            show_notification('WoVP', f'Refreshed {len(challenges)} challenge(s).')
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -1603,8 +1632,6 @@ def _refresh_iscored_games_bg():
                 tray.iscored_games_loaded.emit(games)
             except Exception as e:
                 _log('WARN', f'iScored menu refresh signal failed: {e}')
-        if games:
-            show_notification('iScored', f'Refreshed {len(games)} game(s).')
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -1655,21 +1682,36 @@ def _run_desktop_app():
             self.menu = QMenu(parent)
             self._settings_dialog = None
 
-            # ── Integration toggles ────────────────────────────────────
-            self.act_vpinplay_enable = QAction('Enable VPinPlay', self.menu)
-            self.act_vpinplay_enable.setCheckable(True)
-            self.act_vpinplay_enable.triggered.connect(lambda: self._toggle_integration('vpinplay'))
-            self.menu.addAction(self.act_vpinplay_enable)
+            # ── Active score destination ───────────────────────────────
+            self.destination_action_group = QActionGroup(self.menu)
+            self.destination_action_group.setExclusive(True)
+            self.act_destination_none = QAction('No score destination', self.menu)
+            self.act_destination_none.setCheckable(True)
+            self.act_destination_none.setData('')
+            self.act_destination_none.triggered.connect(lambda: self._select_destination(''))
+            self.destination_action_group.addAction(self.act_destination_none)
+            self.menu.addAction(self.act_destination_none)
 
-            self.act_wovp_enable = QAction('Enable WoVP', self.menu)
-            self.act_wovp_enable.setCheckable(True)
-            self.act_wovp_enable.triggered.connect(lambda: self._toggle_integration('wovp'))
-            self.menu.addAction(self.act_wovp_enable)
+            self.act_destination_vpinplay = QAction('Send to VPinPlay', self.menu)
+            self.act_destination_vpinplay.setCheckable(True)
+            self.act_destination_vpinplay.setData('vpinplay')
+            self.act_destination_vpinplay.triggered.connect(lambda: self._select_destination('vpinplay'))
+            self.destination_action_group.addAction(self.act_destination_vpinplay)
+            self.menu.addAction(self.act_destination_vpinplay)
 
-            self.act_iscored_enable = QAction('Enable iScored', self.menu)
-            self.act_iscored_enable.setCheckable(True)
-            self.act_iscored_enable.triggered.connect(lambda: self._toggle_integration('iscored'))
-            self.menu.addAction(self.act_iscored_enable)
+            self.act_destination_wovp = QAction('Send to WoVP', self.menu)
+            self.act_destination_wovp.setCheckable(True)
+            self.act_destination_wovp.setData('wovp')
+            self.act_destination_wovp.triggered.connect(lambda: self._select_destination('wovp'))
+            self.destination_action_group.addAction(self.act_destination_wovp)
+            self.menu.addAction(self.act_destination_wovp)
+
+            self.act_destination_iscored = QAction('Send to iScored', self.menu)
+            self.act_destination_iscored.setCheckable(True)
+            self.act_destination_iscored.setData('iscored')
+            self.act_destination_iscored.triggered.connect(lambda: self._select_destination('iscored'))
+            self.destination_action_group.addAction(self.act_destination_iscored)
+            self.menu.addAction(self.act_destination_iscored)
 
             self.menu.addSeparator()
 
@@ -1707,18 +1749,8 @@ def _run_desktop_app():
         def update_menu_state(self):
             from wovp_client import WovpClient
 
-            self.act_vpinplay_enable.setChecked(VPINPLAY_ENABLED)
-            self.act_vpinplay_enable.setText(
-                'VPinPlay Enabled' if VPINPLAY_ENABLED else 'Enable VPinPlay'
-            )
-            self.act_wovp_enable.setChecked(WOVP_ENABLED)
-            self.act_wovp_enable.setText(
-                'WoVP Enabled' if WOVP_ENABLED else 'Enable WoVP'
-            )
-            self.act_iscored_enable.setChecked(ISCORED_ENABLED)
-            self.act_iscored_enable.setText(
-                'iScored Enabled' if ISCORED_ENABLED else 'Enable iScored'
-            )
+            for act in self.destination_action_group.actions():
+                act.setChecked(act.data() == ACTIVE_SCORE_DESTINATION)
 
             # WoVP challenges: accessible whenever api_key is present so the user
             # can pre-configure a challenge without having to enable WoVP first.
@@ -1733,18 +1765,11 @@ def _run_desktop_app():
             for act in self.iscored_game_actions:
                 act.setEnabled(iscored_ready and act.data() not in ('empty', 'header'))
 
-            # Tooltip summarises which integrations are live.
-            enabled_labels = [
-                name for name, on in (
-                    ('VPinPlay', VPINPLAY_ENABLED),
-                    ('WoVP', WOVP_ENABLED),
-                    ('iScored', ISCORED_ENABLED),
-                ) if on
-            ]
-            if enabled_labels:
-                self.setToolTip('VPinLeaders Client | ' + ', '.join(enabled_labels))
+            if ACTIVE_SCORE_DESTINATION:
+                labels = {'vpinplay': 'VPinPlay', 'wovp': 'WoVP', 'iscored': 'iScored'}
+                self.setToolTip('VPinLeaders Client | ' + labels.get(ACTIVE_SCORE_DESTINATION, ACTIVE_SCORE_DESTINATION))
             else:
-                self.setToolTip('VPinLeaders Client | no integration enabled')
+                self.setToolTip('VPinLeaders Client | no score destination')
 
         def _defer_menu_update(self):
             self.menu_update_requested.emit()
@@ -1752,45 +1777,22 @@ def _run_desktop_app():
         def _schedule_menu_update(self):
             QTimer.singleShot(150, self.update_menu_state)
 
-        def _toggle_integration(self, name):
-            global WOVP_ENABLED, ISCORED_ENABLED, VPINPLAY_ENABLED
-
-            currently_enabled = {
-                'vpinplay': VPINPLAY_ENABLED,
-                'wovp': WOVP_ENABLED,
-                'iscored': ISCORED_ENABLED,
-            }.get(name)
-            if currently_enabled is None:
-                return
-
-            if not currently_enabled and not _integration_configured(name):
-                _log('INFO', f'Integration {name} needs setup before enabling')
+        def _select_destination(self, name):
+            if name and not _integration_configured(name):
+                _log('INFO', f'Integration {name} needs setup before it can be selected')
                 self._defer_menu_update()
                 QTimer.singleShot(150, lambda n=name: self._open_integration_setup(n))
                 return
 
-            if name == 'vpinplay':
-                VPINPLAY_ENABLED = not VPINPLAY_ENABLED
-                new_value = VPINPLAY_ENABLED
-            elif name == 'wovp':
-                WOVP_ENABLED = not WOVP_ENABLED
-                new_value = WOVP_ENABLED
-            elif name == 'iscored':
-                ISCORED_ENABLED = not ISCORED_ENABLED
-                new_value = ISCORED_ENABLED
-            else:
-                return
-
-            if name not in config:
-                config[name] = {}
-            config[name]['enable'] = 'true' if new_value else 'false'
+            _apply_active_destination(name)
+            _write_active_destination(name)
             save_config()
 
             _refresh_manual_send_listeners()
-            _log('INFO', f'Integration {name} {"enabled" if new_value else "disabled"}')
-            if new_value and name == 'wovp':
+            _log('INFO', f'Active score destination set to {ACTIVE_SCORE_DESTINATION or "none"}')
+            if name == 'wovp':
                 _refresh_wovp_challenges_bg()
-            elif new_value and name == 'iscored':
+            elif name == 'iscored':
                 _refresh_iscored_games_bg()
             self._defer_menu_update()
 
@@ -2080,16 +2082,9 @@ def _run_desktop_app():
     tray.show()
     _set_notification_sink(lambda title, message, kind: tray.notify_requested.emit(title, message, kind))
 
-    enabled_labels = ','.join(
-        name for name, on in (
-            ('vpinplay', VPINPLAY_ENABLED),
-            ('wovp', WOVP_ENABLED),
-            ('iscored', ISCORED_ENABLED),
-        ) if on
-    ) or 'none'
     _log(
         'INFO',
-        f'Startup: enabled={enabled_labels} | '
+        f'Startup: active_destination={ACTIVE_SCORE_DESTINATION or "none"} | '
         f'keyboard={"on" if _keyboard_binding_enabled() else "off"} '
         f'({MANUAL_SEND_KEYBOARD_BINDING or "none"}) | '
         f'joystick={"on" if _joystick_binding_enabled() else "off"}',

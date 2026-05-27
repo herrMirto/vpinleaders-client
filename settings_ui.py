@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import configparser
 import os
+import platform
+import warnings
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QTimer
@@ -72,6 +74,30 @@ def _ensure_section(cp: configparser.ConfigParser, name: str) -> None:
 
 def _truthy(value: str) -> bool:
     return str(value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _normalize_destination(value: str) -> str:
+    value = str(value or "").strip().lower()
+    return value if value in ("vpinplay", "wovp", "iscored") else ""
+
+
+def _active_destination_from_config(cp: configparser.ConfigParser) -> str:
+    configured = _normalize_destination(cp.get("integrations", "active_destination", fallback=""))
+    if configured:
+        return configured
+    for name in ("vpinplay", "wovp", "iscored"):
+        if _truthy(cp.get(name, "enable", fallback="false")):
+            return name
+    return ""
+
+
+def _set_active_destination(cp: configparser.ConfigParser, destination: str) -> None:
+    destination = _normalize_destination(destination)
+    _ensure_section(cp, "integrations")
+    cp["integrations"]["active_destination"] = destination
+    for name in ("vpinplay", "wovp", "iscored"):
+        _ensure_section(cp, name)
+        cp[name]["enable"] = "true" if name == destination else "false"
 
 
 def _valid_vpinplay_machine_id(value: str) -> bool:
@@ -138,6 +164,130 @@ def _add_horizontal_separator(layout: QVBoxLayout) -> None:
     layout.addWidget(line)
 
 
+class _JoystickCaptureController:
+    def __init__(self, parent: QWidget, edit: QLineEdit, status: QLabel, button: QPushButton):
+        self.parent = parent
+        self.edit = edit
+        self.status = status
+        self.button = button
+        self.timer = QTimer(parent)
+        self.timer.setInterval(30)
+        self.timer.timeout.connect(self._poll)
+        self.pygame = None
+        self.joysticks = []
+        self.detected = ()
+        self.stable_ticks = 0
+        self.poll_ticks = 0
+        self.button.clicked.connect(self.start)
+
+    def start(self) -> None:
+        if self.timer.isActive():
+            self.stop("Joystick detection cancelled.")
+            return
+        if not self._init_pygame():
+            return
+        self.detected = ()
+        self.stable_ticks = 0
+        self.poll_ticks = 0
+        self.button.setText("Cancel")
+        self.status.setText("Press and hold the joystick button or button combo.")
+        self.timer.start()
+
+    def stop(self, message: str = "") -> None:
+        if self.timer.isActive():
+            self.timer.stop()
+        self.button.setText("Detect...")
+        if message:
+            self.status.setText(message)
+        self._shutdown_pygame()
+
+    def _init_pygame(self) -> bool:
+        os.environ.setdefault("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS", "1")
+        os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+        if platform.system() == "Darwin":
+            os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API.*")
+                import pygame
+        except Exception as exc:
+            QMessageBox.warning(self.parent, "Joystick unavailable", f"Could not load joystick support: {exc}")
+            return False
+
+        try:
+            pygame.init()
+            pygame.joystick.init()
+            self.joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
+        except Exception as exc:
+            QMessageBox.warning(self.parent, "Joystick unavailable", f"Could not start joystick support: {exc}")
+            try:
+                pygame.quit()
+            except Exception:
+                pass
+            return False
+
+        self.pygame = pygame
+        if not self.joysticks:
+            self.stop("No joystick or gamepad detected.")
+            return False
+        return True
+
+    def _shutdown_pygame(self) -> None:
+        pygame = self.pygame
+        self.pygame = None
+        self.joysticks = []
+        if pygame is None:
+            return
+        try:
+            pygame.joystick.quit()
+        except Exception:
+            pass
+        try:
+            pygame.quit()
+        except Exception:
+            pass
+
+    def _pressed_buttons(self) -> tuple[int, ...]:
+        pressed = set()
+        for joy in self.joysticks:
+            try:
+                for idx in range(joy.get_numbuttons()):
+                    if joy.get_button(idx):
+                        pressed.add(idx)
+            except Exception:
+                continue
+        return tuple(sorted(pressed))
+
+    def _poll(self) -> None:
+        pygame = self.pygame
+        if pygame is None:
+            self.stop()
+            return
+        self.poll_ticks += 1
+        try:
+            pygame.event.pump()
+        except Exception:
+            pass
+
+        pressed = self._pressed_buttons()
+        if pressed:
+            if pressed == self.detected:
+                self.stable_ticks += 1
+            else:
+                self.detected = pressed
+                self.stable_ticks = 1
+                self.status.setText("Detected: " + ",".join(str(btn) for btn in pressed))
+            if self.stable_ticks >= 4:
+                value = ",".join(str(btn) for btn in pressed)
+                self.edit.setText(value)
+                self.stop(f"Joystick buttons set to {value}.")
+            return
+
+        if self.poll_ticks > 300:
+            self.stop("No button detected.")
+
+
 # ---------------------------------------------------------------------------
 # Wizard pages
 # ---------------------------------------------------------------------------
@@ -194,14 +344,14 @@ class _NvramFolderPage(QWizardPage):
 class _IntegrationPickerPage(QWizardPage):
     def __init__(self):
         super().__init__()
-        layout = _build_page_layout(self, "Choose integrations", "Pick one or more leaderboards. You can change this later.")
-        self.cb_vpinplay = QCheckBox("VPinPlay — syncs to your own local or network instance")
-        self.cb_wovp = QCheckBox("WoVP (World of Virtual Pinball) — submits to active challenges")
-        self.cb_isc = QCheckBox("iScored — submits to your iScored gameroom")
-
-        for cb in (self.cb_vpinplay, self.cb_wovp, self.cb_isc):
-            cb.toggled.connect(self.completeChanged)
-            layout.addWidget(cb)
+        layout = _build_page_layout(self, "Choose destination", "Pick where manual score sends should go.")
+        self.destination_combo = QComboBox()
+        self.destination_combo.addItem("None for now", "")
+        self.destination_combo.addItem("VPinPlay - syncs to your own local or network instance", "vpinplay")
+        self.destination_combo.addItem("WoVP - submits to active challenges", "wovp")
+        self.destination_combo.addItem("iScored - submits to your iScored gameroom", "iscored")
+        self.destination_combo.currentIndexChanged.connect(self.completeChanged)
+        layout.addWidget(self.destination_combo)
 
         layout.addStretch(1)
         self.setCommitPage(False)
@@ -213,15 +363,19 @@ class _IntegrationPickerPage(QWizardPage):
 
     @property
     def want_wovp(self) -> bool:
-        return self.cb_wovp.isChecked()
+        return self.active_destination == "wovp"
 
     @property
     def want_iscored(self) -> bool:
-        return self.cb_isc.isChecked()
+        return self.active_destination == "iscored"
 
     @property
     def want_vpinplay(self) -> bool:
-        return self.cb_vpinplay.isChecked()
+        return self.active_destination == "vpinplay"
+
+    @property
+    def active_destination(self) -> str:
+        return str(self.destination_combo.currentData() or "")
 
 
 class _WoVPPage(QWizardPage):
@@ -374,9 +528,18 @@ class _CapturePage(QWizardPage):
         self.hotkey_edit = QLineEdit("cmd+shift+s")
         form.addRow("Manual send hotkey:", self.hotkey_edit)
 
+        joy_row = QHBoxLayout()
         self.joy_edit = QLineEdit()
         self.joy_edit.setPlaceholderText("e.g. 4,5 (joystick button indices, optional)")
-        form.addRow("Joystick buttons:", self.joy_edit)
+        self.joy_detect_button = QPushButton("Detect...")
+        joy_row.addWidget(self.joy_edit, 1)
+        joy_row.addWidget(self.joy_detect_button)
+        form.addRow("Joystick buttons:", joy_row)
+
+        self.joy_status = QLabel("")
+        self.joy_status.setWordWrap(True)
+        form.addRow("", self.joy_status)
+        self.joy_capture = _JoystickCaptureController(self, self.joy_edit, self.joy_status, self.joy_detect_button)
 
         layout.addLayout(form)
         layout.addStretch(1)
@@ -503,6 +666,7 @@ class FirstRunWizard(QWizard):
         return -1
 
     def accept(self) -> None:
+        self.capture.joy_capture.stop()
         try:
             self._save()
         except Exception as exc:
@@ -510,41 +674,39 @@ class FirstRunWizard(QWizard):
             return
         super().accept()
 
+    def reject(self) -> None:
+        self.capture.joy_capture.stop()
+        super().reject()
+
     def _save(self) -> None:
         cp = _read_config(self.config_path)
         cp.remove_section("vpinleaders")
         cp.remove_section("credentials")
 
+        _set_active_destination(cp, self.picker.active_destination)
+
         # VPinPlay
         _ensure_section(cp, "vpinplay")
         if self.picker.want_vpinplay and self.vpinplay.isComplete():
-            cp["vpinplay"]["enable"] = "true"
             cp["vpinplay"]["api_url"] = normalize_api_url(self.vpinplay.api_url)
             cp["vpinplay"]["user_id"] = self.vpinplay.user_id
             cp["vpinplay"]["initials"] = self.vpinplay.initials
             cp["vpinplay"]["machine_id"] = self.vpinplay.machine_id
             cp["vpinplay"]["auto_send"] = "true" if self.vpinplay.auto_send else "false"
         else:
-            cp["vpinplay"]["enable"] = "false"
             cp["vpinplay"]["auto_send"] = "false"
 
         # WoVP
         _ensure_section(cp, "wovp")
         if self.picker.want_wovp and self.wovp.isComplete():
-            cp["wovp"]["enable"] = "true"
             cp["wovp"]["api_key"] = self.wovp.api_key
-        else:
-            cp["wovp"]["enable"] = "false"
 
         # iScored
         _ensure_section(cp, "iscored")
         if self.picker.want_iscored and self.iscored.isComplete():
-            cp["iscored"]["enable"] = "true"
             cp["iscored"]["player_name"] = self.iscored.player_name
             cp["iscored"].pop("room_urls", None)
             cp["iscored"].pop("gamerooms", None)
-        else:
-            cp["iscored"]["enable"] = "false"
 
         # Capture / hotkeys / nvram
         _ensure_section(cp, "screenshot")
@@ -631,13 +793,24 @@ class SettingsDialog(QDialog):
             line.setFrameShadow(QFrame.Shadow.Sunken)
             layout.addWidget(line)
 
+        destination_box = QGroupBox("Score destination")
+        style_integration_box(destination_box)
+        destination_form = QFormLayout(destination_box)
+        tune_form(destination_form)
+        self.active_destination_combo = QComboBox()
+        self.active_destination_combo.addItem("None", "")
+        self.active_destination_combo.addItem("VPinPlay", "vpinplay")
+        self.active_destination_combo.addItem("WoVP", "wovp")
+        self.active_destination_combo.addItem("iScored", "iscored")
+        destination_form.addRow("Send scores to:", self.active_destination_combo)
+        layout.addWidget(destination_box)
+        add_separator()
+
         # VPinPlay
         vpinplay_box = QGroupBox("VPinPlay")
         style_integration_box(vpinplay_box)
         vpinplay_form = QFormLayout(vpinplay_box)
         tune_form(vpinplay_form)
-        self.cb_vpinplay = QCheckBox("Enable VPinPlay")
-        vpinplay_form.addRow(self.cb_vpinplay)
         self.vpinplay_api_url = QLineEdit()
         vpinplay_form.addRow("VPinPlay URL:", self.vpinplay_api_url)
         self.vpinplay_user_id = QLineEdit()
@@ -660,8 +833,6 @@ class SettingsDialog(QDialog):
         style_integration_box(wovp_box)
         wovp_form = QFormLayout(wovp_box)
         tune_form(wovp_form)
-        self.cb_wovp = QCheckBox("Enable WoVP")
-        wovp_form.addRow(self.cb_wovp)
         self.wovp_api_key = QLineEdit()
         self.wovp_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         wovp_form.addRow("API key:", self.wovp_api_key)
@@ -673,8 +844,6 @@ class SettingsDialog(QDialog):
         style_integration_box(isc_box)
         isc_form = QFormLayout(isc_box)
         tune_form(isc_form)
-        self.cb_iscored = QCheckBox("Enable iScored")
-        isc_form.addRow(self.cb_iscored)
         self.iscored_player = QLineEdit()
         isc_form.addRow("Username:", self.iscored_player)
         layout.addWidget(isc_box)
@@ -701,8 +870,18 @@ class SettingsDialog(QDialog):
         self.hotkey_edit = QLineEdit()
         form.addRow("Manual send hotkey:", self.hotkey_edit)
 
+        joy_row = QHBoxLayout()
         self.joy_edit = QLineEdit()
-        form.addRow("Joystick buttons:", self.joy_edit)
+        self.joy_edit.setPlaceholderText("e.g. 4,5")
+        self.joy_detect_button = QPushButton("Detect...")
+        joy_row.addWidget(self.joy_edit, 1)
+        joy_row.addWidget(self.joy_detect_button)
+        form.addRow("Joystick buttons:", joy_row)
+
+        self.joy_status = QLabel("")
+        self.joy_status.setWordWrap(True)
+        form.addRow("", self.joy_status)
+        self.joy_capture = _JoystickCaptureController(page, self.joy_edit, self.joy_status, self.joy_detect_button)
 
         self.tabs.addTab(page, "Capture & hotkey")
 
@@ -741,17 +920,18 @@ class SettingsDialog(QDialog):
     def _load(self) -> None:
         cp = _read_config(self.config_path)
         vpinplay_values = _vpinplay_values_from_vpinfe_or_config(cp)
-        self.cb_vpinplay.setChecked(_truthy(cp.get("vpinplay", "enable", fallback="false")))
+        idx = self.active_destination_combo.findData(_active_destination_from_config(cp))
+        if idx >= 0:
+            self.active_destination_combo.setCurrentIndex(idx)
+
         self.vpinplay_api_url.setText(vpinplay_values["api_url"])
         self.vpinplay_user_id.setText(vpinplay_values["user_id"])
         self.vpinplay_initials.setText(vpinplay_values["initials"])
         self.vpinplay_machine_id.setText(vpinplay_values["machine_id"])
         self.cb_vpinplay_auto_send.setChecked(_truthy(cp.get("vpinplay", "auto_send", fallback="false")))
 
-        self.cb_wovp.setChecked(_truthy(cp.get("wovp", "enable", fallback="false")))
         self.wovp_api_key.setText(cp.get("wovp", "api_key", fallback=""))
 
-        self.cb_iscored.setChecked(_truthy(cp.get("iscored", "enable", fallback="false")))
         self.iscored_player.setText(cp.get("iscored", "player_name", fallback=""))
 
         try:
@@ -769,28 +949,28 @@ class SettingsDialog(QDialog):
         self.log_edit.setText(cp.get("logging", "file", fallback="~/.vpinscoretracker/logs/vpinscoretracker.log"))
 
     def _on_save(self) -> None:
+        self.joy_capture.stop()
         cp = _read_config(self.config_path)
         cp.remove_section("vpinleaders")
         cp.remove_section("credentials")
 
         _ensure_section(cp, "wovp")
-        cp["wovp"]["enable"] = "true" if self.cb_wovp.isChecked() else "false"
         cp["wovp"]["api_key"] = self.wovp_api_key.text().strip()
 
         _ensure_section(cp, "iscored")
-        cp["iscored"]["enable"] = "true" if self.cb_iscored.isChecked() else "false"
         cp["iscored"]["player_name"] = self.iscored_player.text().strip()
         cp["iscored"].pop("room_urls", None)
         cp["iscored"].pop("gamerooms", None)
 
         _ensure_section(cp, "vpinplay")
-        cp["vpinplay"]["enable"] = "true" if self.cb_vpinplay.isChecked() else "false"
         cp["vpinplay"]["api_url"] = normalize_api_url(self.vpinplay_api_url.text())
         cp["vpinplay"]["user_id"] = self.vpinplay_user_id.text().strip()
         cp["vpinplay"]["initials"] = self.vpinplay_initials.text().strip()
         cp["vpinplay"]["machine_id"] = _machine_id_or_generated(self.vpinplay_machine_id.text())
         cp["vpinplay"]["auto_send"] = "true" if self.cb_vpinplay_auto_send.isChecked() else "false"
-        if self.cb_vpinplay.isChecked() and not (
+        destination = str(self.active_destination_combo.currentData() or "")
+        _set_active_destination(cp, destination)
+        if destination == "vpinplay" and not (
             cp["vpinplay"]["api_url"].strip()
             and cp["vpinplay"]["user_id"].strip()
             and cp["vpinplay"]["initials"].strip()
@@ -800,6 +980,12 @@ class SettingsDialog(QDialog):
                 "VPinPlay setup incomplete",
                 "Enter the VPinPlay URL, user ID, and initials.",
             )
+            return
+        if destination == "wovp" and not cp["wovp"]["api_key"].strip():
+            QMessageBox.critical(self, "WoVP setup incomplete", "Enter the WoVP API key.")
+            return
+        if destination == "iscored" and not cp["iscored"]["player_name"].strip():
+            QMessageBox.critical(self, "iScored setup incomplete", "Enter your iScored username.")
             return
 
         _ensure_section(cp, "screenshot")
@@ -822,6 +1008,10 @@ class SettingsDialog(QDialog):
             QMessageBox.critical(self, "Could not save settings", str(exc))
             return
         self.accept()
+
+    def reject(self) -> None:
+        self.joy_capture.stop()
+        super().reject()
 
 class IntegrationSetupWizard(QWizard):
     PAGE_SETUP = 0
@@ -872,13 +1062,11 @@ class IntegrationSetupWizard(QWizard):
             if not isinstance(self.page, _WoVPPage) or not self.page.isComplete():
                 raise ValueError("WoVP API key is required.")
             _ensure_section(cp, "wovp")
-            cp["wovp"]["enable"] = "true"
             cp["wovp"]["api_key"] = self.page.api_key
         elif self.integration == "iscored":
             if not isinstance(self.page, _IScoredPage) or not self.page.isComplete():
                 raise ValueError("iScored username is required.")
             _ensure_section(cp, "iscored")
-            cp["iscored"]["enable"] = "true"
             cp["iscored"]["player_name"] = self.page.player_name
             cp["iscored"].pop("room_urls", None)
             cp["iscored"].pop("gamerooms", None)
@@ -886,13 +1074,13 @@ class IntegrationSetupWizard(QWizard):
             if not isinstance(self.page, _VPinPlayPage) or not self.page.isComplete():
                 raise ValueError("VPinPlay URL, user ID, and initials are required.")
             _ensure_section(cp, "vpinplay")
-            cp["vpinplay"]["enable"] = "true"
             cp["vpinplay"]["api_url"] = normalize_api_url(self.page.api_url)
             cp["vpinplay"]["user_id"] = self.page.user_id
             cp["vpinplay"]["initials"] = self.page.initials
             cp["vpinplay"]["machine_id"] = self.page.machine_id
             cp["vpinplay"]["auto_send"] = "true" if self.page.auto_send else "false"
 
+        _set_active_destination(cp, self.integration)
         _write_config(cp, self.config_path)
 
 
